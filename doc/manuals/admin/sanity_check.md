@@ -31,7 +31,7 @@ curl --header 'Accept: application/json' localhost:1026/version
     "compiled_by" : "fermin",
     "compiled_in" : "debvm",
     "release_date" : "Wed Sep 27 16:56:16 CEST 2017",
-    "doc" : "https://fiware-orion.readthedocs.org/en/master/"
+    "doc" : "https://fiware-orion.rtfd.io/"
   }
 }
 ```
@@ -59,9 +59,18 @@ changed using the -port command line option.
 ## Databases
 
 The Orion Context Broker uses a MongoDB database, whose parameters are
-provided using the command line options `dbhost`, `-dbuser`, `-dbpwd`
-and `-db`. Note that `-dbuser` and `-dbpwd` are only used if MongoDB
-runs using authentication, i.e. with `--auth`.
+provided using the command line options:
+
+* `-dbhost`
+* `-db`
+* `-dbuser`
+* `-dbpwd`
+* `-dbAuthMech`
+* `-dbAuthDb`
+* `-dbSSL`
+
+Note that `-dbuser`, `-dbpwd`, `-dbAuthMech` and `-dbAuthDb`.
+are only used if MongoDB runs using authentication, i.e. with `--auth`.
 
 You can check that the database is working using the mongo console:
 

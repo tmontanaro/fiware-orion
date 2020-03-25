@@ -39,12 +39,14 @@
 */
 typedef struct ContextRegistrationResponse
 {
-  ContextRegistration   contextRegistration;    // Mandatory
-  StatusCode            errorCode;              // Optional
+  ContextRegistration   contextRegistration;        // Mandatory
+  StatusCode            errorCode;                  // Optional
+  ProviderFormat        providerFormat;             // During forwarding, this field is used to record the 'format' from the registration that provoked
+                                                    // this Context Element to be forwarded.
 
   ContextRegistrationResponse();
 
-  std::string  render(bool comma);
+  std::string  toJsonV1(bool comma);
   void         release(void);
 
   std::string  check(ApiVersion          apiVersion,

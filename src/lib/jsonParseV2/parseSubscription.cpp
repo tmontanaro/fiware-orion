@@ -217,7 +217,7 @@ std::string parseSubscription(ConnectionInfo* ciP, SubscriptionUpdate* subsP, bo
   {
     std::string statusString = statusOpt.value;
 
-    if ((statusString != "active") && (statusString != "inactive"))
+    if ((statusString != "active") && (statusString != "inactive") && (statusString != "oneshot"))
     {
       return badInput(ciP, ERROR_DESC_BAD_REQUEST_INVALID_STATUS);
     }
@@ -493,7 +493,6 @@ static std::string parseNotification(ConnectionInfo* ciP, SubscriptionUpdate* su
     return badInput(ciP, "http notification is missing");
   }
 
-
   // Attributes
   std::string errorString;
 
@@ -504,11 +503,17 @@ static std::string parseNotification(ConnectionInfo* ciP, SubscriptionUpdate* su
 
   if (notification.HasMember("attrs"))
   {
-    if (parseStringVector(&subsP->notification.attributes, notification["attrs"], "attrs", true, &errorString) == false)
+    bool b = parseStringVector(&subsP->notification.attributes,
+                               notification["attrs"],
+                               "attrs",
+                               true,
+                               true,
+                               &errorString);
+
+    if (b == false)
     {
       return badInput(ciP, errorString);
     }
-
     subsP->notification.blacklist = false;
     subsP->blacklistProvided      = true;
   }
@@ -517,6 +522,7 @@ static std::string parseNotification(ConnectionInfo* ciP, SubscriptionUpdate* su
     if (parseStringVector(&subsP->notification.attributes,
                           notification["exceptAttrs"],
                           "exceptAttrs",
+                          true,
                           true,
                           &errorString) == false)
     {
@@ -527,15 +533,35 @@ static std::string parseNotification(ConnectionInfo* ciP, SubscriptionUpdate* su
     {
       return badInput(ciP, "http notification has exceptAttrs is empty");
     }
-
     subsP->notification.blacklist = true;
     subsP->blacklistProvided      = true;
+  }
+  if (notification.HasMember("onlyChangedAttrs"))
+  {
+    Opt<bool> onlyChangedOpt = getBoolOpt(notification, "onlyChangedAttrs");
+    if (!onlyChangedOpt.ok())
+    {
+      return badInput(ciP, onlyChangedOpt.error);
+    }
+    else if (onlyChangedOpt.given)
+    {
+      bool onlyChangedBool = onlyChangedOpt.value;
+      subsP->onlyChangedProvided = true;
+      subsP->notification.onlyChanged = onlyChangedBool;
+    }
   }
 
   // metadata
   if (notification.HasMember("metadata"))
   {
-    if (parseStringVector(&subsP->notification.metadata, notification["metadata"], "metadata", true, &errorString) == false)
+    bool b = parseStringVector(&subsP->notification.metadata,
+                               notification["metadata"],
+                               "metadata",
+                               true,
+                               true,
+                               &errorString);
+
+    if (b == false)
     {
       return badInput(ciP, errorString);
     }
@@ -591,8 +617,13 @@ static std::string parseNotifyConditionVector
   if (condition.HasMember("attrs"))
   {
     std::string errorString;
-
-    if (parseStringVector(&subsP->subject.condition.attributes, condition["attrs"], "attrs", true, &errorString) == false)
+    bool        b = parseStringVector(&subsP->subject.condition.attributes,
+                                      condition["attrs"],
+                                      "attrs",
+                                      true,
+                                      true,
+                                      &errorString);
+    if (b == false)
     {
       return badInput(ciP, errorString);
     }

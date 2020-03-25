@@ -39,6 +39,7 @@
 
 #include "mongoBackend/MongoGlobal.h"
 #include "mongoBackend/connectionOperations.h"
+#include "mongoBackend/mongoConnectionPool.h"
 #include "mongoBackend/safeMongo.h"
 #include "mongoBackend/dbConstants.h"
 #include "mongoBackend/mongoGetSubscriptions.h"
@@ -53,7 +54,6 @@ using mongo::BSONObj;
 using mongo::BSONElement;
 using mongo::DBClientCursor;
 using mongo::DBClientBase;
-using mongo::Query;
 using mongo::OID;
 using ngsiv2::Subscription;
 using ngsiv2::EntID;
@@ -167,8 +167,11 @@ static void setNotification(Subscription* subP, const BSONObj& r, const std::str
   nP->lastNotification  = r.hasField(CSUB_LASTNOTIFICATION)? getIntOrLongFieldAsLongF(r, CSUB_LASTNOTIFICATION) : -1;
   nP->timesSent         = r.hasField(CSUB_COUNT)?            getIntOrLongFieldAsLongF(r, CSUB_COUNT)            : -1;
   nP->blacklist         = r.hasField(CSUB_BLACKLIST)?        getBoolFieldF(r, CSUB_BLACKLIST)                   : false;
+  nP->onlyChanged       = r.hasField(CSUB_ONLYCHANGED)?      getBoolFieldF(r, CSUB_ONLYCHANGED)                 : false;
   nP->lastFailure       = r.hasField(CSUB_LASTFAILURE)?      getIntOrLongFieldAsLongF(r, CSUB_LASTFAILURE)      : -1;
   nP->lastSuccess       = r.hasField(CSUB_LASTSUCCESS)?      getIntOrLongFieldAsLongF(r, CSUB_LASTSUCCESS)      : -1;
+  nP->lastFailureReason = r.hasField(CSUB_LASTFAILUREASON)?  getStringFieldF(r, CSUB_LASTFAILUREASON)           : "";
+  nP->lastSuccessCode   = r.hasField(CSUB_LASTSUCCESSCODE)?  getIntOrLongFieldAsLongF(r, CSUB_LASTSUCCESSCODE)  : -1;
 
   // Attributes format
   subP->attrsFormat = r.hasField(CSUB_FORMAT)? stringToRenderFormat(getStringFieldF(r, CSUB_FORMAT)) : NGSI_V1_LEGACY;
@@ -203,12 +206,14 @@ static void setNotification(Subscription* subP, const BSONObj& r, const std::str
 
     if (cSubP->lastFailure > subP->notification.lastFailure)
     {
-      subP->notification.lastFailure = cSubP->lastFailure;
+      subP->notification.lastFailure       = cSubP->lastFailure;
+      subP->notification.lastFailureReason = cSubP->lastFailureReason;
     }
 
     if (cSubP->lastSuccess > subP->notification.lastSuccess)
     {
-      subP->notification.lastSuccess = cSubP->lastSuccess;
+      subP->notification.lastSuccess     = cSubP->lastSuccess;
+      subP->notification.lastSuccessCode = cSubP->lastSuccessCode;
     }
   }
   cacheSemGive(__FUNCTION__, "get lastNotification and count");
@@ -272,21 +277,20 @@ void mongoListSubscriptions
    */
   std::auto_ptr<DBClientCursor>  cursor;
   std::string                    err;
-  Query                          q;
+  BSONObj                        q;
 
   // FIXME P6: This here is a bug ... See #3099 for more info
   if (!servicePath.empty() && (servicePath != "/#"))
   {
-    q = Query(BSON(CSUB_SERVICE_PATH << servicePath));
+    q = BSON(CSUB_SERVICE_PATH << servicePath);
   }
-
-  q.sort(BSON("_id" << 1));
 
   TIME_STAT_MONGO_READ_WAIT_START();
   DBClientBase* connection = getMongoConnection();
   if (!collectionRangedQuery(connection,
                              getSubscribeContextCollectionName(tenant),
                              q,
+                             BSON("_id" << 1),
                              limit,
                              offset,
                              &cursor,

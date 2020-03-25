@@ -105,8 +105,10 @@ static void insertInCache
                      sub.attrsFormat,
                      notificationDone,
                      lastNotification,
-                     lastFailure,
                      lastSuccess,
+                     lastFailure,
+                     -1,
+                     "",
                      stringFilterP,
                      mdStringFilterP,
                      sub.status,
@@ -114,7 +116,8 @@ static void insertInCache
                      sub.subject.condition.expression.geometry,
                      sub.subject.condition.expression.coords,
                      sub.subject.condition.expression.georel,
-                     sub.notification.blacklist);
+                     sub.notification.blacklist,
+                     sub.notification.onlyChanged);
 
   cacheSemGive(__FUNCTION__, "Inserting subscription in cache");
 }
@@ -137,7 +140,9 @@ std::string mongoCreateSubscription
   const std::string&               tenant,
   const std::vector<std::string>&  servicePathV,
   const std::string&               xauthToken,
-  const std::string&               fiwareCorrelator
+  const std::string&               fiwareCorrelator,
+  const bool&                      skipInitialNotification,
+  ApiVersion                       apiVersion
 )
 {
   bool reqSemTaken = false;
@@ -160,6 +165,7 @@ std::string mongoCreateSubscription
   setAttrs(sub, &b);
   setMetadata(sub, &b);
   setBlacklist(sub, &b);
+  setOnlyChanged(sub, &b);
 
   std::string status = sub.status == ""?  STATUS_ACTIVE : sub.status;
 
@@ -183,7 +189,9 @@ std::string mongoCreateSubscription
                            xauthToken,
                            fiwareCorrelator,
                            &b,
-                           &notificationDone);
+                           &notificationDone,
+                           skipInitialNotification,
+                           apiVersion);
 
   if (notificationDone)
   {

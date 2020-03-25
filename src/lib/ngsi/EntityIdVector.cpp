@@ -31,6 +31,7 @@
 
 #include "common/globals.h"
 #include "common/tag.h"
+#include "common/JsonHelper.h"
 #include "alarmMgr/alarmMgr.h"
 #include "apiTypesV2/EntityVector.h"
 
@@ -41,9 +42,27 @@
 
 /* ****************************************************************************
 *
-* EntityIdVector::render -
+* EntityIdVector::toJson -
 */
-std::string EntityIdVector::render(bool comma)
+std::string EntityIdVector::toJson(void)
+{
+  JsonVectorHelper jh;
+
+  for (unsigned int ix = 0; ix < vec.size(); ++ix)
+  {
+    jh.addRaw(vec[ix]->toJson());
+  }
+
+  return jh.str();
+}
+
+
+
+/* ****************************************************************************
+*
+* EntityIdVector::toJsonV1 -
+*/
+std::string EntityIdVector::toJsonV1(bool comma)
 {
   std::string out = "";
 
@@ -55,7 +74,7 @@ std::string EntityIdVector::render(bool comma)
   out += startTag("entities", true);
   for (unsigned int ix = 0; ix < vec.size(); ++ix)
   {
-    out += vec[ix]->render(ix != vec.size() - 1, true);
+    out += vec[ix]->toJsonV1(ix != vec.size() - 1, true);
   }
 
   out += endTag(comma, true);

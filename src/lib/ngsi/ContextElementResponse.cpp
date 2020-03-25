@@ -38,6 +38,7 @@
 #include "mongoBackend/safeMongo.h"
 #include "mongoBackend/dbFieldEncoding.h"
 #include "mongoBackend/compoundResponses.h"
+#include "mongoBackend/MongoGlobal.h"       // includedAttribute
 
 using namespace mongo;
 
@@ -61,11 +62,11 @@ ContextElementResponse::ContextElementResponse(EntityId* eP, ContextAttribute* a
 {
   prune = false;
 
-  contextElement.entityId.fill(eP);
+  entity.fill(eP->id, eP->type, eP->isPattern);
 
   if (aP != NULL)
   {
-    contextElement.contextAttributeVector.push_back(new ContextAttribute(aP));
+    entity.attributeVector.push_back(new ContextAttribute(aP));
   }
 }
 
@@ -75,47 +76,12 @@ ContextElementResponse::ContextElementResponse(EntityId* eP, ContextAttribute* a
 *
 * ContextElementResponse::ContextElementResponse - 
 */
-ContextElementResponse::ContextElementResponse(ContextElementResponse* cerP)
+ContextElementResponse::ContextElementResponse(ContextElementResponse* cerP, bool cloneCompounds)
 {
   prune = false;
 
-  contextElement.fill(cerP->contextElement);
+  entity.fill(cerP->entity, false, cloneCompounds);
   statusCode.fill(cerP->statusCode);
-}
-
-
-
-/* ****************************************************************************
-*
-* includedAttribute -
-*
-* FIXME: note that in the current implementation, in which we only use 'name' to
-* compare, this function is equal to the one for ContextRegistrationAttrribute.
-* However, we keep them separated, as isDomain (present in ContextRegistrationAttribute
-* but not in ContextRegistration could mean a difference). To review once domain attributes
-* get implemented.
-*
-*/
-static bool includedAttribute(const ContextAttribute& attr, const StringList& attrsV)
-{
-  //
-  // This is the case in which the queryContextRequest doesn't include attributes,
-  // so all the attributes are included in the response
-  //
-  if (attrsV.size() == 0 || attrsV.lookup(ALL_ATTRS))
-  {
-    return true;
-  }
-
-  for (unsigned int ix = 0; ix < attrsV.size(); ++ix)
-  {
-    if (attrsV[ix] == attr.name)
-    {
-      return true;
-    }
-  }
-
-  return false;
 }
 
 
@@ -132,7 +98,7 @@ static bool includedAttribute(const ContextAttribute& attr, const StringList& at
 ContextElementResponse::ContextElementResponse
 (
   const mongo::BSONObj&  entityDoc,
-  const StringList&   attrL,
+  const StringList&      attrL,
   bool                   includeEmpty,
   ApiVersion             apiVersion
 )
@@ -145,8 +111,8 @@ ContextElementResponse::ContextElementResponse
   std::string entityId   = getStringFieldF(id, ENT_ENTITY_ID);
   std::string entityType = id.hasField(ENT_ENTITY_TYPE) ? getStringFieldF(id, ENT_ENTITY_TYPE) : "";
 
-  contextElement.entityId.fill(entityId, entityType, "false");
-  contextElement.entityId.servicePath = id.hasField(ENT_SERVICE_PATH) ? getStringFieldF(id, ENT_SERVICE_PATH) : "";
+  entity.fill(entityId, entityType, "false");
+  entity.servicePath = id.hasField(ENT_SERVICE_PATH) ? getStringFieldF(id, ENT_SERVICE_PATH) : "";
 
   /* Get the location attribute (if it exists) */
   std::string locAttr;
@@ -166,18 +132,18 @@ ContextElementResponse::ContextElementResponse
   attrs.getFieldNames(attrNames);
   for (std::set<std::string>::iterator i = attrNames.begin(); i != attrNames.end(); ++i)
   {
-    std::string        attrName = *i;
-    BSONObj            attr     = getObjectFieldF(attrs, attrName);
-    ContextAttribute*  caP      = NULL;
+    std::string        attrName                = *i;
+    BSONObj            attr                    = getObjectFieldF(attrs, attrName);
+    ContextAttribute*  caP                     = NULL;
     ContextAttribute   ca;
+    bool               noLocationMetadata      = true;
 
     // Name and type
-    ca.name           = dbDotDecode(basePart(attrName));
-    std::string mdId  = idPart(attrName);
+    ca.name           = dbDotDecode(attrName);
     ca.type           = getStringFieldF(attr, ENT_ATTRS_TYPE);
 
     // Skip attribute if the attribute is in the list (or attrL is empty or includes "*")
-    if (!includedAttribute(ca, attrL))
+    if (!includedAttribute(ca.name, attrL))
     {
       continue;
     }
@@ -231,10 +197,7 @@ ContextElementResponse::ContextElementResponse
       case Array:
         caP = new ContextAttribute(ca.name, ca.type, "");
         caP->compoundValueP = new orion::CompoundValueNode(orion::ValueTypeVector);
-        // FIXME P7: next line is counterintuitive. If the object is a vector, why
-        // we need to use ValueTypeObject here? Because otherwise Metadata::toJson()
-        // method doesn't work. A littely crazy... it should be fixed.
-        caP->valueType = orion::ValueTypeObject;
+        caP->valueType = orion::ValueTypeVector;
         compoundVectorResponse(caP->compoundValueP, getFieldF(attr, ENT_ATTRS_VALUE));
         break;
 
@@ -243,23 +206,10 @@ ContextElementResponse::ContextElementResponse
       }
     }
 
-    /* Setting ID (if found) */
-    if (mdId != "")
+    /* dateExpires is managed like a regular attribute in DB, but it is a builtin and it is shadowed */
+    if (caP->name == DATE_EXPIRES)
     {
-      Metadata* md = new Metadata(NGSI_MD_ID, "string", mdId);
-      caP->metadataVector.push_back(md);
-    }
-
-    if (apiVersion == V1)
-    {
-      /* Setting location metadata (if found) */
-      if ((locAttr == ca.name) && (ca.type != GEO_POINT))
-      {
-        /* Note that if attribute type is geo:point then the user is using the "new way"
-         * of locating entities in NGSIv1, thus location metadata is not rendered */
-        Metadata* md = new Metadata(NGSI_MD_LOCATION, "string", LOCATION_WGS84);
-        caP->metadataVector.push_back(md);
-      }
+      caP->shadowed = true;
     }
 
     /* Setting custom metadata (if any) */
@@ -273,6 +223,33 @@ ContextElementResponse::ContextElementResponse
       {
         std::string currentMd = *i;
         Metadata*   md = new Metadata(dbDotDecode(currentMd), getObjectFieldF(mds, currentMd));
+
+        /* The flag below indicates that a location metadata with WGS84 was found during iteration.
+        *  It needs to the NGSIV1 check below, in order to add it if the flag is false
+        *  In addition, adjust old wrong WSG84 metadata value with WGS84 */
+        if (md->name == NGSI_MD_LOCATION)
+        {
+          noLocationMetadata = false;
+
+          if (md->valueType == orion::ValueTypeString && md->stringValue == LOCATION_WGS84_LEGACY)
+          {
+            md->stringValue = LOCATION_WGS84;
+          }
+        }
+
+        caP->metadataVector.push_back(md);
+      }
+    }
+
+    if (apiVersion == V1)
+    {
+      /* Setting location metadata (if location attr found
+       *  and the location metadata was not present or was present but with old wrong WSG84 value) */
+      if ((locAttr == ca.name) && (ca.type != GEO_POINT) && noLocationMetadata)
+      {
+        /* Note that if attribute type is geo:point then the user is using the "new way"
+         * of locating entities in NGSIv1, thus location metadata is not rendered */
+        Metadata* md = new Metadata(NGSI_MD_LOCATION, "string", LOCATION_WGS84);
         caP->metadataVector.push_back(md);
       }
     }
@@ -288,21 +265,20 @@ ContextElementResponse::ContextElementResponse
       caP->modDate = (double) getIntOrLongFieldAsLongF(attr, ENT_ATTRS_MODIFICATION_DATE);
     }
 
-    contextElement.contextAttributeVector.push_back(caP);
+    entity.attributeVector.push_back(caP);
   }
 
   /* Set creDate and modDate at entity level */
   if (entityDoc.hasField(ENT_CREATION_DATE))
   {
-    contextElement.entityId.creDate = (double) getIntOrLongFieldAsLongF(entityDoc, ENT_CREATION_DATE);
+    entity.creDate = (double) getIntOrLongFieldAsLongF(entityDoc, ENT_CREATION_DATE);
   }
 
   if (entityDoc.hasField(ENT_MODIFICATION_DATE))
   {
-    contextElement.entityId.modDate = (double) getIntOrLongFieldAsLongF(entityDoc, ENT_MODIFICATION_DATE);
+    entity.modDate = (double) getIntOrLongFieldAsLongF(entityDoc, ENT_MODIFICATION_DATE);
   }
 }
-
 
 
 /* ****************************************************************************
@@ -311,31 +287,33 @@ ContextElementResponse::ContextElementResponse
 *
 * This constructor builds the CER from a CEP. Note that statusCode is not touched.
 */
-ContextElementResponse::ContextElementResponse(ContextElement* ceP, bool useDefaultType)
+ContextElementResponse::ContextElementResponse(Entity* eP, bool useDefaultType)
 {
-  contextElement.fill(ceP, useDefaultType);
+  entity.fill(*eP, useDefaultType);
 }
 
 
 
 /* ****************************************************************************
 *
-* ContextElementResponse::render - 
+* ContextElementResponse::toJsonV1 -
 */
-std::string ContextElementResponse::render
+std::string ContextElementResponse::toJsonV1
 (
-  ApiVersion          apiVersion,
-  bool                asJsonObject,
-  RequestType         requestType,
-  bool                comma,
-  bool                omitAttributeValues
+  bool                             asJsonObject,
+  RequestType                      requestType,
+  const std::vector<std::string>&  attrsFilter,
+  bool                             blacklist,
+  const std::vector<std::string>&  metadataFilter,
+  bool                             comma,
+  bool                             omitAttributeValues
 )
 {
   std::string out = "";
 
   out += startTag();
-  out += contextElement.render(apiVersion, asJsonObject, requestType, true, omitAttributeValues);
-  out += statusCode.render(false);
+  out += entity.toJsonV1(asJsonObject, requestType, attrsFilter, blacklist, metadataFilter, true, omitAttributeValues);
+  out += statusCode.toJsonV1(false);
   out += endTag(comma, false);
 
   return out;
@@ -351,13 +329,13 @@ std::string ContextElementResponse::toJson
 (
   RenderFormat                     renderFormat,
   const std::vector<std::string>&  attrsFilter,
-  const std::vector<std::string>&  metadataFilter,
-  bool                             blacklist
+  bool                             blacklist,
+  const std::vector<std::string>&  metadataFilter
 )
 {
   std::string out;
 
-  out = contextElement.toJson(renderFormat, attrsFilter, metadataFilter, blacklist);
+  out = entity.toJson(renderFormat, attrsFilter, blacklist, metadataFilter);
 
   return out;
 }
@@ -370,7 +348,7 @@ std::string ContextElementResponse::toJson
 */
 void ContextElementResponse::release(void)
 {
-  contextElement.release();
+  entity.release();
   statusCode.release();
 }
 
@@ -390,7 +368,7 @@ std::string ContextElementResponse::check
 {
   std::string res;
 
-  if ((res = contextElement.check(apiVersion, requestType)) != "OK")
+  if ((res = entity.check(apiVersion, requestType)) != "OK")
   {
     return res;
   }
@@ -420,7 +398,7 @@ void ContextElementResponse::fill(QueryContextResponse* qcrP, const std::string&
   if (qcrP->contextElementResponseVector.size() == 0)
   {
     statusCode.fill(&qcrP->errorCode);
-    contextElement.entityId.fill(entityId, entityType, "false");
+    entity.fill(entityId, entityType, "false");
 
     if ((statusCode.code != SccOk) && (statusCode.details == ""))
     {
@@ -444,7 +422,7 @@ void ContextElementResponse::fill(QueryContextResponse* qcrP, const std::string&
     alarmMgr.badInput(clientIp, "more than one context element found the this query - selecting the first one");
   }
 
-  contextElement.fill(&qcrP->contextElementResponseVector[0]->contextElement);
+  entity.fill(qcrP->contextElementResponseVector[0]->entity);
 
   if (qcrP->errorCode.code != SccNone)
   {
@@ -460,7 +438,7 @@ void ContextElementResponse::fill(QueryContextResponse* qcrP, const std::string&
 */
 void ContextElementResponse::fill(ContextElementResponse* cerP)
 {
-  contextElement.fill(cerP->contextElement);
+  entity.fill(cerP->entity);
   statusCode.fill(cerP->statusCode);
 }
 

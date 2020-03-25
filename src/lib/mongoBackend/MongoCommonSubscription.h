@@ -124,7 +124,9 @@ extern void setCondsAndInitialNotify
   const std::string&               xauthToken,
   const std::string&               fiwareCorrelator,
   mongo::BSONObjBuilder*           b,
-  bool*                            notificationDone
+  bool*                            notificationDone,
+  const bool&                      skipInitialNotification,
+  ApiVersion                       apiVersion
 );
 
 
@@ -149,7 +151,7 @@ extern void setCount(long long count, mongo::BSONObjBuilder* b);
 *
 * setLastFailure -
 */
-extern void setLastFailure(long long lastFailure, mongo::BSONObjBuilder* b);
+extern void setLastFailure(long long lastFailure, const std::string& lastFailureReason, mongo::BSONObjBuilder* b);
 
 
 
@@ -157,7 +159,7 @@ extern void setLastFailure(long long lastFailure, mongo::BSONObjBuilder* b);
 *
 * setLastSuccess -
 */
-extern void setLastSuccess(long long lastSuccess, mongo::BSONObjBuilder* b);
+extern void setLastSuccess(long long lastSuccess, long long lastSuccessCode, mongo::BSONObjBuilder* b);
 
 
 
@@ -182,6 +184,14 @@ extern void setFormat(const ngsiv2::Subscription& sub, mongo::BSONObjBuilder* b)
 * setBlacklist -
 */
 extern void setBlacklist(const ngsiv2::Subscription& sub, mongo::BSONObjBuilder* b);
+
+
+
+/* ****************************************************************************
+*
+* setOnlyChanged -
+*/
+extern void setOnlyChanged(const ngsiv2::Subscription& sub, mongo::BSONObjBuilder* b);
 
 
 

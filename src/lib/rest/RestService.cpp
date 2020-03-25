@@ -67,6 +67,38 @@ RestService*                     restBadVerbV          = NULL;
 
 
 
+/* *****************************************************************************
+*
+* restServiceGet -
+*
+* FIXME P2: Create a vector of service vectors, for faster access.
+*           E.g
+* RestService** serviceVV[7];
+* serviceVV[POST] = postServiceV;
+* serviceVV[GET]  = getServiceV;
+* etc.
+*
+* Then remove the switch to find the correct service vector, just do this:
+*
+* serviceV = restServiceVV[verb];
+* 
+*/
+RestService* restServiceGet(Verb verb)
+{
+  switch (verb)
+  {
+  case POST:       return postServiceV;
+  case PUT:        return putServiceV;
+  case GET:        return getServiceV;
+  case PATCH:      return patchServiceV;
+  case DELETE:     return deleteServiceV;
+  case OPTIONS:    return (optionsServiceV == NULL)? restBadVerbV : optionsServiceV;
+  default:         return restBadVerbV;
+  }
+}
+
+
+
 /* ****************************************************************************
 *
 * serviceVectorsSet
@@ -168,7 +200,7 @@ std::string payloadParse
     }
     else
     {
-      result = jsonTreat(ciP->payload, ciP, parseDataP, service->request, service->payloadWord, jsonPP);
+      result = jsonTreat(ciP->payload, ciP, parseDataP, service->request, jsonPP);
     }
   }
   else if (ciP->inMimeType == TEXT)
@@ -337,30 +369,29 @@ static void scopeFilter
   RestService*      serviceP
 )
 {
-  std::string  payloadWord  = ciP->payloadWord;
   Restriction* restrictionP = NULL;
 
-  if (payloadWord == "discoverContextAvailabilityRequest")
+  if (ciP->restServiceP->request == DiscoverContextAvailability)
   {
     restrictionP = &parseDataP->dcar.res.restriction;
   }
-  else if (payloadWord == "subscribeContextAvailabilityRequest")
+  else if (ciP->restServiceP->request == SubscribeContextAvailability)
   {
     restrictionP = &parseDataP->scar.res.restriction;
   }
-  else if (payloadWord == "updateContextAvailabilitySubscriptionRequest")
+  else if (ciP->restServiceP->request == UpdateContextAvailabilitySubscription)
   {
     restrictionP = &parseDataP->ucas.res.restriction;
   }
-  else if (payloadWord == "queryContextRequest")
+  else if (ciP->restServiceP->request == QueryContext)
   {
     restrictionP = &parseDataP->qcr.res.restriction;
   }
-  else if (payloadWord == "subscribeContextRequest")
+  else if (ciP->restServiceP->request == SubscribeContext)
   {
     restrictionP = &parseDataP->scr.res.restriction;
   }
-  else if (payloadWord == "updateContextSubscriptionRequest")
+  else if (ciP->restServiceP->request == UpdateContextSubscription)
   {
     restrictionP = &parseDataP->ucsr.res.restriction;
   }
@@ -512,7 +543,7 @@ static std::string restService(ConnectionInfo* ciP, RestService* serviceV)
   if ((ciP->url.length() == 0) || ((ciP->url.length() == 1) && (ciP->url.c_str()[0] == '/')))
   {
     OrionError  error(SccBadRequest, "The Orion Context Broker is a REST service, not a 'web page'");
-    std::string response = error.render();
+    std::string response = error.toJsonV1();
 
     alarmMgr.badInput(clientIp, "The Orion Context Broker is a REST service, not a 'web page'");
     restReply(ciP, response);
@@ -543,7 +574,6 @@ static std::string restService(ConnectionInfo* ciP, RestService* serviceV)
   //
   // Lookup the requested service
   //
-  
   for (unsigned int ix = 0; serviceV[ix].treat != NULL; ++ix)
   {
     if ((serviceV[ix].components != 0) && (serviceV[ix].components != components))
@@ -551,7 +581,6 @@ static std::string restService(ConnectionInfo* ciP, RestService* serviceV)
       continue;
     }
 
-    strncpy(ciP->payloadWord, serviceV[ix].payloadWord.c_str(), sizeof(ciP->payloadWord));
     bool match = true;
     for (int compNo = 0; compNo < components; ++compNo)
     {
@@ -630,7 +659,6 @@ static std::string restService(ConnectionInfo* ciP, RestService* serviceV)
 
     // Tenant to connectionInfo
     ciP->tenant = ciP->tenantFromHttpHeader;
-    lmTransactionSetService(ciP->tenant.c_str());
 
     //
     // A tenant string must not be longer than 50 characters and may only contain
@@ -728,11 +756,12 @@ static std::string restService(ConnectionInfo* ciP, RestService* serviceV)
   //
   // ... and this here is the error that is returned. A 400 Bad Request with "service XXX not recognized" as payload
   //
-  std::string details = std::string("service '") + ciP->url + "' not recognized";
-  alarmMgr.badInput(clientIp, details);
+  std::string  details = std::string("service '") + ciP->url + "' not recognized";
+  std::string  answer;
 
+  restErrorReplyGet(ciP, SccBadRequest, "service not found", &answer);
+  alarmMgr.badInput(clientIp, details);
   ciP->httpStatusCode = SccBadRequest;
-  std::string answer = restErrorReplyGet(ciP, "", ciP->payloadWord, SccBadRequest, std::string("service not found"));
   restReply(ciP, answer);
 
   compV.clear();

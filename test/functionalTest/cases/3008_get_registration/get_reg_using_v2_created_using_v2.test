@@ -98,7 +98,7 @@ Date: REGEX(.*)
 02. GET the registration using APIv2
 ====================================
 HTTP/1.1 200 OK
-Content-Length: 263
+Content-Length: 262
 Content-Type: application/json
 Fiware-Correlator: REGEX([0-9a-f\-]{36})
 Date: REGEX(.*)
@@ -156,7 +156,7 @@ Date: REGEX(.*)
         "registrationRequest": 2,
         "registrationsRequest": 1,
         "statisticsRequests": 1,
-        "versionRequests": REGEX((0|1))
+        "versionRequests": 0
     },
     "measuring_interval_in_secs": REGEX(\d+),
     "uptime_in_secs": REGEX(\d+)

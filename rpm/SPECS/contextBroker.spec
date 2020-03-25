@@ -40,15 +40,18 @@ Buildrequires: gcc, cmake, gcc-c++, gnutls-devel, libgcrypt-devel, libcurl-devel
 Requires(pre): shadow-utils
 
 %description
-The Orion Context Broker is an implementation of NGSI9 and NGSI10 interfaces. 
-Using these interfaces, clients can do several operations:
-* Register context producer applications, e.g. a temperature sensor within a room.
-* Update context information, e.g. send updates of temperature.
-* Being notified when changes on context information take place (e.g. the
-  temperature has changed) or with a given frecuency (e.g. get the temperature
-  each minute).
-* Query context information. The Orion Context Broker stores context information
-  updated from applications, so queries are resolved based on that information.
+The Orion Context Broker is an implementation of the Publish/Subscribe Context Broker GE,
+providing an NGSI interface. Using this interface, clients can do several operations:
+
+* Query context information. The Orion Context Broker stores context information updated
+  from applications, so queries are resolved based on that information. Context 
+  information consists on *entities* (e.g. a car) and their *attributes* (e.g. the speed
+  or location of the car).
+* Update context information, e.g. send updates of temperature
+* Get notified when changes on context information take place (e.g. the temperature
+  has changed)
+* Register context provider applications, e.g. the provider for the temperature sensor
+  within a room
 
 %prep
 if [ -d $RPM_BUILD_ROOT/usr ]; then
@@ -173,6 +176,82 @@ if [ "$1" == "0" ]; then
 fi
 
 %changelog
+* Tue Nov 05 2019 Fermin Galan <fermin.galanmarquez@telefonica.com> 2.3.0-1
+- Add: basic NGSIv2 queries and updates forwarding (#3068)
+- Add: idPattern '.*' support in in NGSIv2 registrations (#3458)
+- Add: Notify only attributes that change (#3190)
+- Add: CLI option -inReqPayloadMaxSize to let users decide the maximum allowed size of incoming request payloads (#3492)
+- Add: CLI option -outReqMsgMaxSize to let users decide the maximum allowed total size of any outgoing request message (for forwards and notifications) (#3492)
+- Add: -dbAuthMech CLI parameter to set MongoDB authentication mechanism (#2987)
+- Add: -dbAuthDb CLI parameter to set MongoDB authentication database
+- Add: -dbSSL to enable SSL in the connection to DB (#3524)
+- Fix: The 'Allow:' header for the service /v2/registrations had the incorrect value of "Allow: POST". The correct value is: "Allow: GET, POST"
+- Fix: incorrectly loging update subscription traces in ERROR log level (#3531)
+- Fix: set default MongoDB authentication mechanism to SCRAM-SHA-1 (old MONGODB-CR was deprecated time ago)
+- Fix: abort on startup when MongoDB authentication fails to avoid starting a useless Context Broker
+- Fix: change max -dbhost length from 64 to 256 (to cope with long replica set strings using full domain names)
+- Hardening: avoid regex when possible in servicePath token in DB queries (#3505)
+- Hardening: avoid $in vectors with only one element in servicePath token in DB queries (#3505)
+- Hardening: avoid mono-item $or array in entity query (#3505)
+- Hardening: avoid unneeded _id.type: {$exists: true} in entity queries that already include _id.type (#3505)
+- Hardening: avoid _id.id: /.*/ and _id.type: /.*/ in entity queries, as removing the token has the same effect (#3505)
+- Hardening: avoid unneeded {$exists: true} and mono-item arrays (as much as posible) in attribute queries (#3505)
+- Remove: support to entities without service path in DB (no one of so ancient data model should remain today)
+- Remove: deprecated Rush support
+
+* Thu Feb 21 2019 Fermin Galan <fermin.galanmarquez@telefonica.com> 2.2.0-1
+- Add: skipInitialNotification URI param option to make initial notification in subscriptions configurable (#920)
+- Add: forcedUpdate URI param option to always trigger notifications, no matter if actual update or not (#3389)
+- Add: log notification HTTP response (as INFO for 2xx or WARN for other codes)
+- Add: notification.lastFailureReason field in subscriptions to get the reason of the last notification failure
+- Add: notification.lastSuccessCode field in subscriptions to get the HTTP responde code of the last successful notification
+- Fix: NGSIv1 updates with geo:line|box|polygon|json removes location DB field of NGSIv2-located entities (#3442)
+- Fix: specify notification/forwarding error cause in log messages (#3077)
+- Fix: from=, corr=, srv=, subsrv= correctly propagated to logs in notifications (#3073)
+- Fix: avoid "pending" fields in logs
+- Fix: use "<none>" for srv= and subsrv= in logs when service/subservice header is not provided
+- Fix: bug in notification alarm raising in -notificationMode transient and persistent
+- Remove: deprecated feature ID metadata (and associated NGSIv1 operations)
+
+* Wed Dec 19 2018 Fermin Galan <fermin.galanmarquez@telefonica.com> 2.1.0-1
+- Add: Oneshot Subscription (#3189)
+- Add: support to MongoDB 3.6 (#3070)
+- Fix: problems rendering structured attribute values when forwarded queries are involved (#3162, #3363, #3282)
+- Fix: NGSIv2-NGSIv1 location metadata issues (#3122)
+- Fix: wrong inclusion of "location" metadata in geo:json notifications (#3045)
+- Fix: metadata filter was lost during csub cache refresh (#3290)
+- Fix: NGSIv1-like error responses were used in some NGSIv2 operations
+- Fix: cache sem is not taken before subCacheItemLookup() call (#2882)
+- Fix: wrong Runtime Error logs on GET /v2/registrations and GET /v2/registrations/{id} calls (#3375)
+- Deprecate: Rush support (along with -rush CLI parameter)
+- Remove: isDomain field in NGSIv1 registrations (it was never used)
+
+* Fri Sep 28 2018 Fermin Galan <fermin.galanmarquez@telefonica.com> 2.0.0-1
+- Fix: GET /v2/subscriptions and GET /v2/subscriptions/{id} crashes for permanent subscriptions created before version 1.13.0 (#3256)
+- Fix: correct processing of JSON special characters  (such as \n) in NGSIv2 rendering (#3280, #2938)
+- Fix: correct error payload using errorCode (previously orionError was used) in POST /v1/queryContext and POST /v1/updateContext in some cases
+- Fix: bug in metadata compound value rendering in NGSIv2 (sometimes "toplevel" key was wrongly inserted in the resulting JSON object)
+- Fix: missing or empty metadata values were not allowed in NGSIv2 create/update operations (#3121)
+- Fix: default types for entities and attributes in NGSIv2 was wrongly using "none" in some cases
+- Fix: with NGSIv2 replace operations the geolocalization field is inconsistent in DB (#1142, #3167)
+- Fix: duplicated attribute/metadata keys in JSON response in some cases for dateCreated/dateModified/actionType
+- Fix: proper management of user attributes/metadata which name matches the one of a builtin (the user defined shadows the builtin for rendering but not for filtering)
+- Fix: pre-update metadata content included in notifications (and it shouldn't) (#3310)
+- Fix: duplicated items in ?attrs and ?metadata URI params (and "attrs" and "metadata" in POST /v2/op/query and subscriptions) cause duplicated keys in responses/notifications (#3311)
+- Fix: dateCreated and dateModified included in initial notification (#3182)
+- Hardening: modification of the URL parsing mechanism, making it more efficient, and the source code easier to follow (#3109, step 1)
+- Hardening: refactor NGSIv2 rendering code (throughput increase up to 33%/365% in entities/subscriptions rendering intensive scenarios) (#1298)
+- Hardening: Mongo driver now compiled using --use-sasl-client --ssl to enable proper DB authentication mechanisms
+- Deprecated: NGSIv1 API (along with related CLI parameters: -strictNgsiv1Ids and -ngsiv1Autocast)
+
+* Mon Jul 16 2018 Fermin Galan <fermin.galanmarquez@telefonica.com> 1.15.0-1
+- Add: upsert option for the POST /v2/entities operation (#3215)
+- Add: transient entities functionality (new NGSIv2 builtin attribute: dateExpires) (#3000)
+- Add: "attrs" field in POST /v2/op/query (making "attributes" obsolete) (#2604)
+- Add: "expression" field in POST /v2/op/query (#2706)
+- Fix: large integer wrong rendering in responses (#2603, #2425, #2506)
+- Remove: "scopes" field in POST /v2/op/query (#2706)
+
 * Fri Jun 15 2018 Fermin Galan <fermin.galanmarquez@telefonica.com> 1.14.0-1
 - Add: support for APIv2 notifications (POST /v2/op/notify), which opens up for true APIv2 federation (#2986)
 - Add: camelCase actionTypes in POST /v2/op/update (append, appendStrict, update, delete and replace) (#2721)

@@ -123,9 +123,7 @@ SET (SOURCES
     ngsi10/UpdateContextSubscriptionResponse_test.cpp
 
     ngsi/ContextAttribute_test.cpp
-    ngsi/ContextElement_test.cpp
     ngsi/NotifyCondition_test.cpp
-    ngsi/AttributeDomainName_test.cpp
     ngsi/AttributeList_test.cpp
     ngsi/ConditionValueList_test.cpp
     ngsi/ContextAttributeVector_test.cpp
@@ -137,7 +135,6 @@ SET (SOURCES
     ngsi/ProvidingApplication_test.cpp
     ngsi/Duration_test.cpp
     ngsi/AttributeExpression_test.cpp
-    ngsi/ContextElementVector_test.cpp
     ngsi/ContextRegistrationResponse_test.cpp
     ngsi/ContextRegistrationResponseVector_test.cpp
     ngsi/EntityId_test.cpp
@@ -252,8 +249,8 @@ MESSAGE("unitTest distro: '${DISTRO}'")
 
 IF(${DISTRO} MATCHES "CentOS_6.*")
   TARGET_LINK_LIBRARIES(unitTest ${STATIC_LIBS} ${BOOST_MT} ${DYNAMIC_LIBS})
-ELSEIF(${DISTRO} MATCHES "Debian_8.*")
-  # It seems that Debian 8.x doesn't like -mt libraries for unit tests... not sure about other Debian versions
+ELSEIF((${DISTRO} MATCHES "Debian_8.*") OR (${DISTRO} MATCHES "Debian_9.*"))
+  # It seems that Debian 8.x/9.x doesn't like -mt libraries for unit tests... not sure about other Debian versions
   TARGET_LINK_LIBRARIES(unitTest ${STATIC_LIBS} ${BOOST} ${DYNAMIC_LIBS})
 ELSEIF(${DISTRO} MATCHES "Debian_.*")
   TARGET_LINK_LIBRARIES(unitTest ${STATIC_LIBS} ${BOOST_MT} ${DYNAMIC_LIBS})

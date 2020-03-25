@@ -31,6 +31,7 @@
 #include "logMsg/traceLevels.h"
 #include "common/globals.h"
 #include "mongoBackend/MongoGlobal.h"
+#include "mongoBackend/mongoConnectionPool.h"
 #include "mongoBackend/mongoUpdateContextAvailabilitySubscription.h"
 #include "ngsi9/UpdateContextAvailabilitySubscriptionRequest.h"
 #include "ngsi9/UpdateContextAvailabilitySubscriptionResponse.h"
@@ -156,35 +157,35 @@ static void prepareDatabase(void)
                            BSON("id" << "E2" << "type" << "T2") <<
                            BSON("id" << "E3" << "type" << "T3")) <<
                        "attrs" << BSON_ARRAY(
-                           BSON("name" << "A1" << "type" << "TA1" << "isDomain" << "true") <<
-                           BSON("name" << "A2" << "type" << "TA2" << "isDomain" << "false") <<
-                           BSON("name" << "A3" << "type" << "TA3" << "isDomain" << "true")));
+                           BSON("name" << "A1" << "type" << "TA1") <<
+                           BSON("name" << "A2" << "type" << "TA2") <<
+                           BSON("name" << "A3" << "type" << "TA3")));
 
     BSONObj cr2 = BSON("providingApplication" << "http://cr2.com" <<
                        "entities" << BSON_ARRAY(
                            BSON("id" << "E1" << "type" << "T1")) <<
                        "attrs" << BSON_ARRAY(
-                           BSON("name" << "A1" << "type" << "TA1" << "isDomain" << "true") <<
-                           BSON("name" << "A4" << "type" << "TA4" << "isDomain" << "false")));
+                           BSON("name" << "A1" << "type" << "TA1") <<
+                           BSON("name" << "A4" << "type" << "TA4")));
 
     BSONObj cr3 = BSON("providingApplication" << "http://cr3.com" <<
                        "entities" << BSON_ARRAY(
                            BSON("id" << "E2" << "type" << "T2")) <<
                        "attrs" << BSON_ARRAY(
-                           BSON("name" << "A2" << "type" << "TA2" << "isDomain" << "false") <<
-                           BSON("name" << "A3" << "type" << "TA3" << "isDomain" << "true")));
+                           BSON("name" << "A2" << "type" << "TA2") <<
+                           BSON("name" << "A3" << "type" << "TA3")));
 
     BSONObj cr4 = BSON("providingApplication" << "http://cr4.com" <<
                        "entities" << BSON_ARRAY(
                          BSON("id" << "E1" << "type" << "T1bis")) <<
                        "attrs" << BSON_ARRAY(
-                         BSON("name" << "A1" << "type" << "TA1bis" << "isDomain" << "false")));
+                         BSON("name" << "A1" << "type" << "TA1bis")));
 
     BSONObj cr5 = BSON("providingApplication" << "http://cr5.com" <<
                        "entities" << BSON_ARRAY(
                          BSON("id" << "E1")) <<
                        "attrs" << BSON_ARRAY(
-                         BSON("name" << "A1" << "type" << "TA1" << "isDomain" << "true")));
+                         BSON("name" << "A1" << "type" << "TA1")));
 
     /* 1879048191 corresponds to year 2029 so we avoid any expiration problem in the next 16 years :) */
     BSONObj reg1 = BSON(
@@ -267,35 +268,35 @@ static void prepareDatabasePatternTrue(void)
                          BSON("id" << "E2" << "type" << "T") <<
                          BSON("id" << "E3" << "type" << "T")) <<
                      "attrs" << BSON_ARRAY(
-                         BSON("name" << "A1" << "type" << "TA1" << "isDomain" << "true") <<
-                         BSON("name" << "A2" << "type" << "TA2" << "isDomain" << "false") <<
-                         BSON("name" << "A3" << "type" << "TA3" << "isDomain" << "true")));
+                         BSON("name" << "A1" << "type" << "TA1") <<
+                         BSON("name" << "A2" << "type" << "TA2") <<
+                         BSON("name" << "A3" << "type" << "TA3")));
 
   BSONObj cr2 = BSON("providingApplication" << "http://cr2.com" <<
                      "entities" << BSON_ARRAY(
                          BSON("id" << "E1" << "type" << "T")) <<
                      "attrs" << BSON_ARRAY(
-                         BSON("name" << "A1" << "type" << "TA1" << "isDomain" << "true") <<
-                         BSON("name" << "A4" << "type" << "TA4" << "isDomain" << "false")));
+                         BSON("name" << "A1" << "type" << "TA1") <<
+                         BSON("name" << "A4" << "type" << "TA4")));
 
   BSONObj cr3 = BSON("providingApplication" << "http://cr3.com" <<
                      "entities" << BSON_ARRAY(
                          BSON("id" << "E2" << "type" << "T")) <<
                      "attrs" << BSON_ARRAY(
-                         BSON("name" << "A2" << "type" << "TA2" << "isDomain" << "false") <<
-                         BSON("name" << "A3" << "type" << "TA3" << "isDomain" << "true")));
+                         BSON("name" << "A2" << "type" << "TA2") <<
+                         BSON("name" << "A3" << "type" << "TA3")));
 
   BSONObj cr4 = BSON("providingApplication" << "http://cr4.com" <<
                      "entities" << BSON_ARRAY(
                        BSON("id" << "E2" << "type" << "Tbis")) <<
                      "attrs" << BSON_ARRAY(
-                       BSON("name" << "A2" << "type" << "TA2bis" << "isDomain" << "false")));
+                       BSON("name" << "A2" << "type" << "TA2bis")));
 
   BSONObj cr5 = BSON("providingApplication" << "http://cr5.com" <<
                      "entities" << BSON_ARRAY(
                        BSON("id" << "E3")) <<
                      "attrs" << BSON_ARRAY(
-                       BSON("name" << "A2" << "type" << "TA2" << "isDomain" << "false")));
+                       BSON("name" << "A2" << "type" << "TA2")));
 
   /* 1879048191 corresponds to year 2029 so we avoid any expiration problem in the next 16 years :) */
   BSONObj reg1 = BSON(
@@ -800,9 +801,9 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternAttrsAll)
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E3", "T3", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
-    ContextRegistrationAttribute cra3("A3", "TA3", "true");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
+    ContextRegistrationAttribute cra3("A3", "TA3");
     ContextRegistrationResponse crr;
     crr.contextRegistration.entityIdVector.push_back(&mockEn);
     crr.contextRegistration.contextRegistrationAttributeVector.push_back(&cra1);
@@ -889,9 +890,9 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternAttrsAll_JSON)
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E3", "T3", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
-    ContextRegistrationAttribute cra3("A3", "TA3", "true");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
+    ContextRegistrationAttribute cra3("A3", "TA3");
     ContextRegistrationResponse crr;
     crr.contextRegistration.entityIdVector.push_back(&mockEn);
     crr.contextRegistration.contextRegistrationAttributeVector.push_back(&cra1);
@@ -978,7 +979,7 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternAttrOneSingle)
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E1", "T1", "false");
-    ContextRegistrationAttribute cra("A4", "TA4", "false");
+    ContextRegistrationAttribute cra("A4", "TA4");
     ContextRegistrationResponse crr;
     crr.contextRegistration.entityIdVector.push_back(&mockEn);
     crr.contextRegistration.contextRegistrationAttributeVector.push_back(&cra);
@@ -1070,7 +1071,7 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternAttrOneMulti)
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E1", "T1", "false");
-    ContextRegistrationAttribute cra("A1", "TA1", "true");
+    ContextRegistrationAttribute cra("A1", "TA1");
     ContextRegistrationResponse crr1, crr2;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn);
     crr1.contextRegistration.contextRegistrationAttributeVector.push_back(&cra);
@@ -1162,8 +1163,8 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternAttrsSubset)
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E3", "T3", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
     ContextRegistrationResponse crr;
     crr.contextRegistration.entityIdVector.push_back(&mockEn);
     crr.contextRegistration.contextRegistrationAttributeVector.push_back(&cra1);
@@ -1254,10 +1255,10 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternSeveralCREs)
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E1", "T1", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
-    ContextRegistrationAttribute cra3("A3", "TA3", "true");
-    ContextRegistrationAttribute cra4("A4", "TA4", "false");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
+    ContextRegistrationAttribute cra3("A3", "TA3");
+    ContextRegistrationAttribute cra4("A4", "TA4");
     ContextRegistrationResponse crr1, crr2;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn);
     crr1.contextRegistration.contextRegistrationAttributeVector.push_back(&cra1);
@@ -1350,9 +1351,9 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternSeveralRegistrations)
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E2", "T2", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
-    ContextRegistrationAttribute cra3("A3", "TA3", "true");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
+    ContextRegistrationAttribute cra3("A3", "TA3");
     ContextRegistrationResponse crr1, crr2;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn);
     crr1.contextRegistration.contextRegistrationAttributeVector.push_back(&cra1);
@@ -1447,10 +1448,10 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternMultiEntity)
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn1("E1", "T1", "false");
     EntityId mockEn2("E2", "T2", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
-    ContextRegistrationAttribute cra3("A3", "TA3", "true");
-    ContextRegistrationAttribute cra4("A4", "TA4", "false");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
+    ContextRegistrationAttribute cra3("A3", "TA3");
+    ContextRegistrationAttribute cra4("A4", "TA4");
     ContextRegistrationResponse crr1, crr2, crr3;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn1);
     crr1.contextRegistration.entityIdVector.push_back(&mockEn2);
@@ -1555,8 +1556,8 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternMultiAttr)
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E1", "T1", "false");
-    ContextRegistrationAttribute cra1("A3", "TA3", "true");
-    ContextRegistrationAttribute cra2("A4", "TA4", "false");
+    ContextRegistrationAttribute cra1("A3", "TA3");
+    ContextRegistrationAttribute cra2("A4", "TA4");
     ContextRegistrationResponse crr1, crr2;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn);
     crr1.contextRegistration.contextRegistrationAttributeVector.push_back(&cra1);
@@ -1654,8 +1655,8 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternMultiEntityAttrs)
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn1("E1", "T1", "false");
     EntityId mockEn2("E2", "T2", "false");
-    ContextRegistrationAttribute cra1("A3", "TA3", "true");
-    ContextRegistrationAttribute cra2("A4", "TA4", "false");
+    ContextRegistrationAttribute cra1("A3", "TA3");
+    ContextRegistrationAttribute cra2("A4", "TA4");
     ContextRegistrationResponse crr1, crr2, crr3;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn1);
     crr1.contextRegistration.entityIdVector.push_back(&mockEn2);
@@ -1770,8 +1771,8 @@ TEST(mongoUpdateContextAvailabilitySubscription, noPatternNoType)
     EntityId mockEn1("E1", "T1", "false");
     EntityId mockEn2("E1", "T1bis", "false");
     EntityId mockEn3("E1", "", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A1", "TA1bis", "false");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A1", "TA1bis");
     ContextRegistrationResponse crr1, crr2, crr3, crr4;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn1);
     crr1.contextRegistration.contextRegistrationAttributeVector.push_back(&cra1);
@@ -1875,9 +1876,9 @@ TEST(mongoUpdateContextAvailabilitySubscription, pattern0Attr)
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn1("E2", "T", "false");
     EntityId mockEn2("E3", "T", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
-    ContextRegistrationAttribute cra3("A3", "TA3", "true");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
+    ContextRegistrationAttribute cra3("A3", "TA3");
     ContextRegistrationResponse crr1, crr2;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn1);
     crr1.contextRegistration.entityIdVector.push_back(&mockEn2);
@@ -1969,7 +1970,7 @@ TEST(mongoUpdateContextAvailabilitySubscription, pattern1AttrSingle)
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E1", "T", "false");
-    ContextRegistrationAttribute cra("A4", "TA4", "false");
+    ContextRegistrationAttribute cra("A4", "TA4");
     ContextRegistrationResponse crr;
     crr.contextRegistration.entityIdVector.push_back(&mockEn);
     crr.contextRegistration.contextRegistrationAttributeVector.push_back(&cra);
@@ -2057,7 +2058,7 @@ TEST(mongoUpdateContextAvailabilitySubscription, pattern1AttrMulti)
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn1("E1", "T", "false");
     EntityId mockEn2("E2", "T", "false");
-    ContextRegistrationAttribute cra("A1", "TA1", "true");
+    ContextRegistrationAttribute cra("A1", "TA1");
     ContextRegistrationResponse crr1, crr2;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn1);
     crr1.contextRegistration.entityIdVector.push_back(&mockEn2);
@@ -2151,8 +2152,8 @@ TEST(mongoUpdateContextAvailabilitySubscription, patternNAttr)
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn1("E1", "T", "false");
     EntityId mockEn2("E2", "T", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
     ContextRegistrationResponse crr1, crr2, crr3;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn1);
     crr1.contextRegistration.entityIdVector.push_back(&mockEn2);
@@ -2260,8 +2261,8 @@ TEST(mongoUpdateContextAvailabilitySubscription, patternNoType)
     EntityId mockEn2("E3", "T", "false");
     EntityId mockEn3("E2", "Tbis", "false");
     EntityId mockEn4("E3", "", "false");
-    ContextRegistrationAttribute cra1("A2", "TA2", "false");
-    ContextRegistrationAttribute cra2("A2", "TA2bis", "false");
+    ContextRegistrationAttribute cra1("A2", "TA2");
+    ContextRegistrationAttribute cra2("A2", "TA2bis");
     ContextRegistrationResponse crr1, crr2, crr3, crr4;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn1);
     crr1.contextRegistration.entityIdVector.push_back(&mockEn2);
@@ -2364,10 +2365,10 @@ TEST(mongoUpdateContextAvailabilitySubscription, mixPatternAndNotPattern)
     EntityId mockEn1("E1", "T", "false");
     EntityId mockEn2("E2", "T", "false");
     EntityId mockEn3("E3", "T", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
-    ContextRegistrationAttribute cra3("A3", "TA3", "true");
-    ContextRegistrationAttribute cra4("A4", "TA4", "false");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
+    ContextRegistrationAttribute cra3("A3", "TA3");
+    ContextRegistrationAttribute cra4("A4", "TA4");
     ContextRegistrationResponse crr1, crr2, crr3;
     crr1.contextRegistration.entityIdVector.push_back(&mockEn1);
     crr1.contextRegistration.entityIdVector.push_back(&mockEn2);
@@ -2549,9 +2550,9 @@ TEST(mongoUpdateContextAvailabilitySubscription, updateDurationAndNoPatternAttrs
     /* Prepare mock */
     NotifyContextAvailabilityRequest expectedNcar;
     EntityId mockEn("E3", "T3", "false");
-    ContextRegistrationAttribute cra1("A1", "TA1", "true");
-    ContextRegistrationAttribute cra2("A2", "TA2", "false");
-    ContextRegistrationAttribute cra3("A3", "TA3", "true");
+    ContextRegistrationAttribute cra1("A1", "TA1");
+    ContextRegistrationAttribute cra2("A2", "TA2");
+    ContextRegistrationAttribute cra3("A3", "TA3");
     ContextRegistrationResponse crr;
     crr.contextRegistration.entityIdVector.push_back(&mockEn);
     crr.contextRegistration.contextRegistrationAttributeVector.push_back(&cra1);

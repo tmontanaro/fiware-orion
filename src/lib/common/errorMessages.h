@@ -48,6 +48,7 @@
 
 #define ERROR_PARSE                                   "ParseError"
 #define ERROR_DESC_PARSE                              "Errors found in incoming JSON buffer"
+#define ERROR_DESC_PARSE_MAX_JSON_NESTING             "attribute or metadata value has overpassed maximum nesting limit: " STR(MAX_JSON_NESTING)
 
 #define ERROR_BAD_REQUEST                             "BadRequest"
 #define ERROR_DESC_BAD_REQUEST_INVALID_CHAR_URI       "invalid character in URI"
@@ -62,7 +63,7 @@
 #define ERROR_DESC_BAD_REQUEST_INVALID_JTYPE_ENTTYPE  "Invalid JSON type for entity type"
 #define ERROR_DESC_BAD_REQUEST_INVALID_JTYPE_SCOPE    "invalid JSON type for scope value: must be string"
 #define ERROR_DESC_BAD_REQUEST_INVALID_ATTRSFORMAT    "invalid attrsFormat, accepted values: legacy, normalized, keyValues, values"
-#define ERROR_DESC_BAD_REQUEST_INVALID_STATUS         "status is not valid: it has to be either active or inactive"
+#define ERROR_DESC_BAD_REQUEST_INVALID_STATUS         "status is not valid: it has to be either active, inactive or oneshot"
 #define ERROR_DESC_BAD_REQUEST_INVALID_RANGE          "ranges only valid for equal and not equal ops"
 #define ERROR_DESC_BAD_REQUEST_INVALID_LIST           "lists only valid for equal and not equal ops"
 #define ERROR_DESC_BAD_REQUEST_PARTIAL_GEOEXPRESSION  "partial geo expression: geometry, georel and coords have to be provided together"
@@ -97,5 +98,10 @@
 #define ERROR_DESC_TOO_MANY_ENTITIES                  "More than one matching entity. Please refine your query"
 
 #define ERROR_DESC_BAD_VERB                           "method not allowed"
+
+
+#define ERROR_NOTIMPLEMENTED                          "NotImplemented"
+#define ERROR_DESC_IDPATTERN_NOTSUPPORTED             "Unsupported idPattern"
+#define ERROR_DESC_TYPEPATTERN_NOTIMPLEMENTED         "typePattern is not supported"
 
 #endif  // SRC_LIB_COMMON_ERRORMESSAGES_H_

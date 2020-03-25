@@ -279,6 +279,7 @@ static void setCondsAndInitialNotifyNgsiv1
   const std::string&               xauthToken,
   const std::string&               fiwareCorrelator,
   BSONObjBuilder*                  b,
+  const bool&                      skipInitialNotification,
   bool*                            notificationDone
 )
 {
@@ -341,7 +342,9 @@ static void setCondsAndInitialNotifyNgsiv1
                                             status,
                                             fiwareCorrelator,
                                             sub.notification.attributes,
-                                            sub.notification.blacklist);
+                                            sub.notification.blacklist,
+                                            skipInitialNotification,
+                                            V1);
 
   b->append(CSUB_CONDITIONS, conds);
   LM_T(LmtMongo, ("Subscription conditions: %s", conds.toString().c_str()));
@@ -362,6 +365,7 @@ static void setCondsAndInitialNotify
   const std::string&               xauthToken,
   const std::string&               fiwareCorrelator,
   BSONObjBuilder*                  b,
+  const bool&                      skipInitialNotification,
   bool*                            notificationDone
 )
 {
@@ -435,6 +439,7 @@ static void setCondsAndInitialNotify
                                      xauthToken,
                                      fiwareCorrelator,
                                      b,
+                                     skipInitialNotification,
                                      notificationDone);
     }
     else
@@ -452,7 +457,9 @@ static void setCondsAndInitialNotify
                                xauthToken,
                                fiwareCorrelator,
                                b,
-                               notificationDone);
+                               notificationDone,
+                               skipInitialNotification,
+                               V2);
     }
   }
   else
@@ -533,9 +540,10 @@ static void setLastNotification(const BSONObj& subOrig, CachedSubscription* subC
 *
 * setLastFailure -
 */
-static long long setLastFailure(const BSONObj& subOrig, CachedSubscription* subCacheP, BSONObjBuilder* b)
+static void setLastFailure(const BSONObj& subOrig, CachedSubscription* subCacheP, BSONObjBuilder* b)
 {
-  long long lastFailure = getIntOrLongFieldAsLongF(subOrig, CSUB_LASTFAILURE);
+  long long   lastFailure       = subOrig.hasField(CSUB_LASTFAILURE)     ? getIntOrLongFieldAsLongF(subOrig, CSUB_LASTFAILURE) : -1;
+  std::string lastFailureReason = subOrig.hasField(CSUB_LASTFAILUREASON) ? getStringFieldF(subOrig, CSUB_LASTFAILUREASON)      : "";
 
   //
   // Compare with 'lastFailure' from the sub-cache.
@@ -543,12 +551,11 @@ static long long setLastFailure(const BSONObj& subOrig, CachedSubscription* subC
   //
   if ((subCacheP != NULL) && (subCacheP->lastFailure > lastFailure))
   {
-    lastFailure = subCacheP->lastFailure;
+    lastFailure       = subCacheP->lastFailure;
+    lastFailureReason = subCacheP->lastFailureReason;
   }
 
-  setLastFailure(lastFailure, b);
-
-  return lastFailure;
+  setLastFailure(lastFailure, lastFailureReason, b);
 }
 
 
@@ -557,9 +564,10 @@ static long long setLastFailure(const BSONObj& subOrig, CachedSubscription* subC
 *
 * setLastSuccess -
 */
-static long long setLastSuccess(const BSONObj& subOrig, CachedSubscription* subCacheP, BSONObjBuilder* b)
+static void setLastSuccess(const BSONObj& subOrig, CachedSubscription* subCacheP, BSONObjBuilder* b)
 {
-  long long lastSuccess = getIntOrLongFieldAsLongF(subOrig, CSUB_LASTSUCCESS);
+  long long lastSuccess     = subOrig.hasField(CSUB_LASTSUCCESS)     ? getIntOrLongFieldAsLongF(subOrig, CSUB_LASTSUCCESS)     : -1;
+  long long lastSuccessCode = subOrig.hasField(CSUB_LASTSUCCESSCODE) ? getIntOrLongFieldAsLongF(subOrig, CSUB_LASTSUCCESSCODE) : -1;
 
   //
   // Compare with 'lastSuccess' from the sub-cache.
@@ -567,12 +575,11 @@ static long long setLastSuccess(const BSONObj& subOrig, CachedSubscription* subC
   //
   if ((subCacheP != NULL) && (subCacheP->lastSuccess > lastSuccess))
   {
-    lastSuccess = subCacheP->lastSuccess;
+    lastSuccess     = subCacheP->lastSuccess;
+    lastSuccessCode = subCacheP->lastSuccessCode;
   }
 
-  setLastSuccess(lastSuccess, b);
-
-  return lastSuccess;
+  setLastSuccess(lastSuccess, lastSuccessCode, b);
 }
 
 
@@ -657,6 +664,27 @@ static void setBlacklist(const SubscriptionUpdate& subUp, const BSONObj& subOrig
 
 /* ****************************************************************************
 *
+* setOnlyChanged -
+*/
+static void setOnlyChanged(const SubscriptionUpdate& subUp, const BSONObj& subOrig, BSONObjBuilder* b)
+{
+  if (subUp.onlyChangedProvided)
+  {
+    setOnlyChanged(subUp, b);
+  }
+  else
+  {
+    bool oList = subOrig.hasField(CSUB_ONLYCHANGED)? getBoolFieldF(subOrig, CSUB_ONLYCHANGED) : false;
+
+    b->append(CSUB_ONLYCHANGED, oList);
+    LM_T(LmtMongo, ("Subscription onlyChanged: %s", oList? "true" : "false"));
+  }
+}
+
+
+
+/* ****************************************************************************
+*
 * setMetadata -
 */
 static void setMetadata(const SubscriptionUpdate& subUp, const BSONObj& subOrig, BSONObjBuilder* b)
@@ -689,14 +717,12 @@ static void setMetadata(const SubscriptionUpdate& subUp, const BSONObj& subOrig,
 *
 * updateInCache -
 */
-void updateInCache
+static void updateInCache
 (
   const BSONObj&             doc,
   const SubscriptionUpdate&  subUp,
   const std::string&         tenant,
-  long long                  lastNotification,
-  long long                  lastFailure,
-  long long                  lastSuccess
+  long long                  lastNotification
 )
 {
   //
@@ -788,8 +814,6 @@ void updateInCache
                                           subUp.id.c_str(),
                                           servicePathCache,
                                           lastNotification,
-                                          lastFailure,
-                                          lastSuccess,
                                           doc.hasField(CSUB_EXPIRATION)? getLongFieldF(doc, CSUB_EXPIRATION) : 0,
                                           doc.hasField(CSUB_STATUS)? getStringFieldF(doc, CSUB_STATUS) : STATUS_ACTIVE,
                                           q,
@@ -833,7 +857,10 @@ std::string mongoUpdateSubscription
   const std::string&               tenant,
   const std::vector<std::string>&  servicePathV,
   const std::string&               xauthToken,
-  const std::string&               fiwareCorrelator
+  const std::string&               fiwareCorrelator,
+  const bool&                      skipInitialNotification,
+  ApiVersion                       apiVersion
+
 )
 {
   bool reqSemTaken = false;
@@ -889,13 +916,15 @@ std::string mongoUpdateSubscription
   std::string         servicePath      = servicePathV[0] == "" ? SERVICE_PATH_ALL : servicePathV[0];
   bool                notificationDone = false;
   long long           lastNotification = 0;
-  long long           lastFailure      = 0;
-  long long           lastSuccess      = 0;
   CachedSubscription* subCacheP        = NULL;
 
   if (!noCache)
   {
+    cacheSemTake(__FUNCTION__, "Looking for subscription in cache subscription");
+
     subCacheP = subCacheItemLookup(tenant.c_str(), subUp.id.c_str());
+
+    cacheSemGive(__FUNCTION__, "Looking for subscription in cache subscription");
   }
 
   setExpiration(subUp, subOrig, &b);
@@ -908,6 +937,7 @@ std::string mongoUpdateSubscription
   setAttrs(subUp, subOrig, &b);
   setMetadata(subUp, subOrig, &b);
   setBlacklist(subUp, subOrig, &b);
+  setOnlyChanged(subUp, subOrig, &b);
 
   setCondsAndInitialNotify(subUp,
                            subOrig,
@@ -916,6 +946,7 @@ std::string mongoUpdateSubscription
                            xauthToken,
                            fiwareCorrelator,
                            &b,
+                           skipInitialNotification,
                            &notificationDone);
 
   if (notificationDone)
@@ -946,8 +977,8 @@ std::string mongoUpdateSubscription
     setCount(0, subOrig, &b);
   }
 
-  lastFailure = setLastFailure(subOrig, subCacheP, &b);
-  lastSuccess = setLastSuccess(subOrig, subCacheP, &b);
+  setLastFailure(subOrig, subCacheP, &b);
+  setLastSuccess(subOrig, subCacheP, &b);
 
   setExpression(subUp, subOrig, &b);
   setFormat(subUp, subOrig, &b);
@@ -969,7 +1000,7 @@ std::string mongoUpdateSubscription
   // Update in cache
   if (!noCache)
   {
-    updateInCache(doc, subUp, tenant, lastNotification, lastFailure, lastSuccess);
+    updateInCache(doc, subUp, tenant, lastNotification);
   }
 
   reqSemGive(__FUNCTION__, "ngsiv2 update subscription request", reqSemTaken);

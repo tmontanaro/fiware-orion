@@ -130,11 +130,14 @@ static bool isFatherProcess = false;
 bool            fg;
 char            bindAddress[MAX_LEN_IP];
 int             port;
-char            dbHost[64];
+char            dbHost[256];
 char            rplSet[64];
 char            dbName[64];
 char            user[64];
 char            pwd[64];
+char            authMech[64];
+char            authDb[64];
+bool            dbSSL;
 char            pidPath[256];
 bool            harakiri;
 bool            useOnlyIPv4;
@@ -143,7 +146,6 @@ char            httpsKeyFile[1024];
 char            httpsCertFile[1024];
 bool            https;
 bool            mtenant;
-char            rush[256];
 char            allowedOrigin[64];
 int             maxAge;
 long            dbTimeout;
@@ -154,6 +156,7 @@ int             writeConcern;
 unsigned int    cprForwardLimit;
 int             subCacheInterval;
 char            notificationMode[64];
+char            notifFlowControl[64];
 int             notificationQueueSize;
 int             notificationThreadNum;
 bool            noCache;
@@ -175,6 +178,10 @@ int             reqTimeout;
 bool            insecureNotif;
 bool            ngsiv1Autocast;
 
+bool            fcEnabled;
+double          fcGauge;
+unsigned long   fcStepDelay;
+unsigned long   fcMaxInterval;
 
 
 
@@ -195,6 +202,9 @@ bool            ngsiv1Autocast;
 #define RPLSET_DESC            "replica set"
 #define DBUSER_DESC            "database user"
 #define DBPASSWORD_DESC        "database password"
+#define DBAUTHMECH_DESC        "database authentication mechanism (either SCRAM-SHA-1 or MONGODB-CR)"
+#define DBAUTHDB_DESC          "database used for authentication"
+#define DBSSL_DESC             "enable SSL connection to DB"
 #define DB_DESC                "database name"
 #define DB_TMO_DESC            "timeout in milliseconds for connections to the replica set (ignored in the case of not using replica set)"
 #define USEIPV4_DESC           "use ip v4 only"
@@ -203,7 +213,6 @@ bool            ngsiv1Autocast;
 #define HTTPS_DESC             "use the https 'protocol'"
 #define HTTPSKEYFILE_DESC      "private server key file (for https)"
 #define HTTPSCERTFILE_DESC     "certificate key file (for https)"
-#define RUSH_DESC              "rush host (IP:port)"
 #define MULTISERVICE_DESC      "service multi tenancy mode"
 #define ALLOWED_ORIGIN_DESC    "enable Cross-Origin Resource Sharing with allowed origin. Use '__ALL' for any"
 #define CORS_MAX_AGE_DESC      "maximum time in seconds preflight requests are allowed to be cached. Default: 86400"
@@ -215,10 +224,13 @@ bool            ngsiv1Autocast;
 #define CPR_FORWARD_LIMIT_DESC "maximum number of forwarded requests to Context Providers for a single client request"
 #define SUB_CACHE_IVAL_DESC    "interval in seconds between calls to Subscription Cache refresh (0: no refresh)"
 #define NOTIFICATION_MODE_DESC "notification mode (persistent|transient|threadpool:q:n)"
+#define FLOW_CONTROL_DESC      "notification flow control parameters (gauge:stepDelay:maxInterval)"
 #define NO_CACHE               "disable subscription cache for lookups"
 #define CONN_MEMORY_DESC       "maximum memory size per connection (in kilobytes)"
 #define MAX_CONN_DESC          "maximum number of simultaneous connections"
 #define REQ_POOL_SIZE          "size of thread pool for incoming connections"
+#define IN_REQ_PAYLOAD_MAX_SIZE_DESC   "maximum size (in bytes) of the payload of incoming requests"
+#define OUT_REQ_MSG_MAX_SIZE_DESC      "maximum size (in bytes) of outgoing forward and notification request messages"
 #define SIMULATED_NOTIF_DESC   "simulate notifications instead of actual sending them (only for testing)"
 #define STAT_COUNTERS          "enable request/notification counters statistics"
 #define STAT_SEM_WAIT          "enable semaphore waiting time statistics"
@@ -257,6 +269,11 @@ PaArgument paArgs[] =
   { "-rplSet",        rplSet,        "RPL_SET",        PaString, PaOpt, _i "",      PaNL,   PaNL,  RPLSET_DESC        },
   { "-dbuser",        user,          "DB_USER",        PaString, PaOpt, _i "",      PaNL,   PaNL,  DBUSER_DESC        },
   { "-dbpwd",         pwd,           "DB_PASSWORD",    PaString, PaOpt, _i "",      PaNL,   PaNL,  DBPASSWORD_DESC    },
+
+  { "-dbAuthMech",    authMech,      "DB_AUTH_MECH",   PaString, PaOpt, _i "SCRAM-SHA-1", PaNL,   PaNL,  DBAUTHMECH_DESC    },
+  { "-dbAuthDb",      authDb,        "DB_AUTH_DB",     PaString, PaOpt, _i "",            PaNL,   PaNL,  DBAUTHDB_DESC    },
+  { "-dbSSL",         &dbSSL,        "DB_AUTH_SSL",    PaBool,   PaOpt, false,            false,  true,  DBSSL_DESC    },
+
   { "-db",            dbName,        "DB",             PaString, PaOpt, _i "orion", PaNL,   PaNL,  DB_DESC            },
   { "-dbTimeout",     &dbTimeout,    "DB_TIMEOUT",     PaDouble, PaOpt, 10000,      PaNL,   PaNL,  DB_TMO_DESC        },
   { "-dbPoolSize",    &dbPoolSize,   "DB_POOL_SIZE",   PaInt,    PaOpt, 10,         1,      10000, DBPS_DESC          },
@@ -269,7 +286,6 @@ PaArgument paArgs[] =
   { "-key",           httpsKeyFile,  "HTTPS_KEYFILE",  PaString, PaOpt, _i "",      PaNL,   PaNL,  HTTPSKEYFILE_DESC  },
   { "-cert",          httpsCertFile, "HTTPS_CERTFILE", PaString, PaOpt, _i "",      PaNL,   PaNL,  HTTPSCERTFILE_DESC },
 
-  { "-rush",          rush,          "RUSH",           PaString, PaOpt, _i "",      PaNL,   PaNL,  RUSH_DESC          },
   { "-multiservice",  &mtenant,      "MULTI_SERVICE",  PaBool,   PaOpt, false,      false,  true,  MULTISERVICE_DESC  },
 
   { "-httpTimeout",   &httpTimeout,  "HTTP_TIMEOUT",   PaLong,   PaOpt, -1,         -1,     MAX_L, HTTP_TMO_DESC      },
@@ -286,8 +302,12 @@ PaArgument paArgs[] =
   { "-maxConnections",   &maxConnections,   "MAX_CONN",          PaUInt,   PaOpt, 1020,           1,     PaNL,     MAX_CONN_DESC          },
   { "-reqPoolSize",      &reqPoolSize,      "TRQ_POOL_SIZE",     PaUInt,   PaOpt, 0,              0,     1024,     REQ_POOL_SIZE          },
 
-  { "-notificationMode",      &notificationMode,      "NOTIF_MODE", PaString, PaOpt, _i "transient", PaNL,  PaNL, NOTIFICATION_MODE_DESC },
-  { "-simulatedNotification", &simulatedNotification, "DROP_NOTIF", PaBool,   PaOpt, false,          false, true, SIMULATED_NOTIF_DESC   },
+  { "-inReqPayloadMaxSize",  &inReqPayloadMaxSize, "IN_REQ_PAYLOAD_MAX_SIZE",  PaULong,  PaOpt, DEFAULT_IN_REQ_PAYLOAD_MAX_SIZE,   0, PaNL,  IN_REQ_PAYLOAD_MAX_SIZE_DESC   },
+  { "-outReqMsgMaxSize",     &outReqMsgMaxSize,    "OUT_REQ_MSG_MAX_SIZE",     PaULong,  PaOpt, DEFAULT_OUT_REQ_MSG_MAX_SIZE,      0, PaNL,  OUT_REQ_MSG_MAX_SIZE_DESC      },
+
+  { "-notificationMode",      &notificationMode,      "NOTIF_MODE",         PaString, PaOpt, _i     "transient", PaNL,  PaNL, NOTIFICATION_MODE_DESC },
+  { "-notifFlowControl",      &notifFlowControl,      "NOTIF_FLOW_CONTROL", PaString, PaOpt, _i     "",          PaNL,  PaNL, FLOW_CONTROL_DESC },
+  { "-simulatedNotification", &simulatedNotification, "DROP_NOTIF",         PaBool,   PaOpt, false, false,       true, SIMULATED_NOTIF_DESC   },
 
   { "-statCounters",   &statCounters,   "STAT_COUNTERS",    PaBool, PaOpt, false, false, true, STAT_COUNTERS     },
   { "-statSemWait",    &statSemWait,    "STAT_SEM_WAIT",    PaBool, PaOpt, false, false, true, STAT_SEM_WAIT     },
@@ -344,7 +364,6 @@ static const char* validLogLevels[] =
 *   RequestType   request     - The type of the request
 *   int           components  - Number of components in the following URL component vector
 *   std::string   compV       - Component vector of the URL
-*   std::string   payloadWord - first word in the payload for the request (to verify that the payload matches the URL). If empty, no check is performed)
 *   RestTreat     treat       - Function pointer to the function to treat the incoming REST request
 *
 */
@@ -643,41 +662,6 @@ static int loadFile(char* path, char* out, int outSize)
 
 /* ****************************************************************************
 *
-* rushParse - parse rush host and port from CLI argument
-*
-* The '-rush' CLI argument has the format "host:port" and this function
-* splits that argument into rushHost and rushPort.
-* If there is a syntax error in the argument, the function exists the program
-* with an error message
-*/
-static void rushParse(char* rush, std::string* rushHostP, uint16_t* rushPortP)
-{
-  char* colon = strchr(rush, ':');
-  char* copy  = strdup(rush);
-
-  if (colon == NULL)
-  {
-    LM_X(1, ("Fatal Error (Bad syntax of '-rush' value: '%s' - expected syntax: 'host:port')", rush));
-  }
-
-  *colon = 0;
-  ++colon;
-
-  *rushHostP = rush;
-  *rushPortP = atoi(colon);
-
-  if ((*rushHostP == "") || (*rushPortP == 0))
-  {
-    LM_X(1, ("Fatal Error (bad syntax of '-rush' value: '%s' - expected syntax: 'host:port')", copy));
-  }
-
-  free(copy);
-}
-
-
-
-/* ****************************************************************************
-*
 * policyGet -
 */
 static SemOpType policyGet(std::string mutexPolicy)
@@ -761,6 +745,69 @@ static void notificationModeParse(char *notifModeArg, int *pQueueSize, int *pNum
 
 
 
+/* ****************************************************************************
+*
+* notifFlowControlParse -
+*/
+static void notifFlowControlParse
+(
+  char*           notifFlowControl,
+  double*         fcGaugeP,
+  unsigned long*  fcStepDelayP,
+  unsigned long*  fcMaxIntervalP
+)
+{
+  std::stringstream ss(notifFlowControl);
+  std::vector<std::string> tokens;
+  while(ss.good())
+  {
+    std::string substr;
+    getline(ss, substr, ':');
+    tokens.push_back(substr);
+  }
+
+  if (tokens.size() != 3)
+  {
+    LM_X(1, ("Fatal Error parsing notification flow control: more tokens than expected (%d)", tokens.size()));
+  }
+
+  std::string error = "";
+  *fcGaugeP = atoF(tokens[0].c_str(), &error);
+  if (error != "")
+  {
+    LM_X(1, ("Fatal Error parsing notification flow control: error parsing gauge '%s': %s",
+             tokens[0].c_str(), error.c_str()));
+  }
+  if (*fcGaugeP > 1 || *fcGaugeP < 0)
+  {
+    LM_X(1, ("Fatal Error parsing notification flow control: gauge must be between 0 and 1 and is %f", *fcGaugeP));
+  }
+
+  *fcStepDelayP = atoUL(tokens[1].c_str(), &error);
+  if (error != "")
+  {
+    LM_X(1, ("Fatal Error parsing notification flow control: error parsing stepDelay '%s': %s",
+             tokens[1].c_str(), error.c_str()));
+  }
+  if (*fcStepDelayP == 0)
+  {
+    LM_X(1, ("Fatal Error parsing notification flow control: stepDelay must be strictly greater than 0", *fcStepDelayP));
+  }
+
+  *fcMaxIntervalP = atoUL(tokens[2].c_str(), &error);
+  if (error != "")
+  {
+    LM_X(1, ("Fatal Error parsing notification flow control: error parsing maxInterval '%s': %s",
+             tokens[2].c_str(), error.c_str()));
+  }
+  if (*fcMaxIntervalP == 0)
+  {
+    LM_X(1, ("Fatal Error parsing notification flow control: maxInterval must be strictly greater than 0", *fcMaxIntervalP));
+  }
+}
+
+
+
 #define LOG_FILE_LINE_FORMAT "time=DATE | lvl=TYPE | corr=CORR_ID | trans=TRANS_ID | from=FROM_IP | srv=SERVICE | subsrv=SUB_SERVICE | comp=Orion | op=FILE[LINE]:FUNC | msg=TEXT"
 /* ****************************************************************************
 *
@@ -771,9 +818,6 @@ int main(int argC, char* argV[])
   int s;
 
   lmTransactionReset();
-
-  uint16_t       rushPort = 0;
-  std::string    rushHost = "";
 
   signal(SIGINT,  sigHandler);
   signal(SIGTERM, sigHandler);
@@ -883,6 +927,11 @@ int main(int argC, char* argV[])
     LM_X(1, ("dbName too long (max %d characters)", DB_NAME_MAX_LEN));
   }
 
+  if ((strncmp(authMech, "SCRAM-SHA-1", strlen("SCRAM-SHA-1")) != 0) && (strncmp(authMech, "MONGODB-CR", strlen("MONGODB-CR")) != 0))
+  {
+    LM_X(1, ("Fatal Error (-dbAuthMech must be either SCRAM-SHA-1 or MONGODB-CR"));
+  }
+
   if (useOnlyIPv6 && useOnlyIPv4)
   {
     LM_X(1, ("Fatal Error (-ipv4 and -ipv6 can not be activated at the same time. They are incompatible)"));
@@ -902,6 +951,24 @@ int main(int argC, char* argV[])
 
   notificationModeParse(notificationMode, &notificationQueueSize, &notificationThreadNum); // This should be called before contextBrokerInit()
   LM_T(LmtNotifier, ("notification mode: '%s', queue size: %d, num threads %d", notificationMode, notificationQueueSize, notificationThreadNum));
+
+  if ((strcmp(notifFlowControl, "") != 0) && (strcmp(notificationMode, "threadpool") != 0))
+  {
+      LM_X(1, ("Fatal Error ('-notifFlowControl' must be used in combination with threadpool notification mode)"));
+  }
+
+  if (strcmp(notifFlowControl, "") != 0)
+  {
+    fcEnabled = true;
+    notifFlowControlParse(notifFlowControl, &fcGauge, &fcStepDelay, &fcMaxInterval);
+    LM_T(LmtNotifier, ("notification flow control: enabled - gauge: %f, stepDelay: %d, maxInterval: %d", fcGauge, fcStepDelay, fcMaxInterval));
+  }
+  else
+  {
+    fcEnabled = false;
+    LM_T(LmtNotifier, ("notification flow control: disabled"));
+  }
+
   LM_I(("Orion Context Broker is running"));
 
   if (fg == false)
@@ -939,7 +1006,7 @@ int main(int argC, char* argV[])
 
   SemOpType policy = policyGet(reqMutexPolicy);
   orionInit(orionExit, ORION_VERSION, policy, statCounters, statSemWait, statTiming, statNotifQueue, strictIdv1);
-  mongoInit(dbHost, rplSet, dbName, user, pwd, mtenant, dbTimeout, writeConcern, dbPoolSize, statSemWait);
+  mongoInit(dbHost, rplSet, dbName, user, pwd, authMech, authDb, dbSSL, mtenant, dbTimeout, writeConcern, dbPoolSize, statSemWait);
   alarmMgr.init(relogAlarms);
   metricsMgr.init(!disableMetrics, statSemWait);
   logSummaryInit(&lsPeriod);
@@ -952,12 +1019,6 @@ int main(int argC, char* argV[])
   if (curl_global_init(CURL_GLOBAL_SSL) != 0)
   {
     LM_X(1, ("Fatal Error (could not initialize libcurl)"));
-  }
-
-  if (rush[0] != 0)
-  {
-    rushParse(rush, &rushHost, &rushPort);
-    LM_T(LmtRush, ("rush host: '%s', rush port: %d", rushHost.c_str(), rushPort));
   }
 
   if (noCache == false)
@@ -1009,8 +1070,6 @@ int main(int argC, char* argV[])
                           connectionMemory,
                           maxConnections,
                           reqPoolSize,
-                          rushHost,
-                          rushPort,
                           allowedOrigin,
                           maxAge,
                           reqTimeout,
@@ -1029,8 +1088,6 @@ int main(int argC, char* argV[])
                           connectionMemory,
                           maxConnections,
                           reqPoolSize,
-                          rushHost,
-                          rushPort,
                           allowedOrigin,
                           maxAge,
                           reqTimeout,

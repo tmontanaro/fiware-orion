@@ -29,8 +29,10 @@
 #include "logMsg/traceLevels.h"
 
 #include "common/globals.h"
+#include "common/JsonHelper.h"
 #include "ngsi/EntityId.h"
 #include "common/tag.h"
+#include "common/JsonHelper.h"
 
 
 
@@ -78,10 +80,38 @@ EntityId::EntityId
 
 /* ****************************************************************************
 *
-* EntityId::render -
+* EntityId::toJson -
 *
 */
-std::string EntityId::render(bool comma, bool isInVector)
+std::string EntityId::toJson(void)
+{
+  JsonObjectHelper jh;
+
+  if (isTrue(isPattern))
+  {
+    jh.addString("idPattern", id);
+  }
+  else
+  {
+    jh.addString("id", id);
+  }
+
+  if (!type.empty())
+  {
+    jh.addString("type", type);
+  }
+
+  return jh.str();
+}
+
+
+
+/* ****************************************************************************
+*
+* EntityId::toJsonV1 -
+*
+*/
+std::string EntityId::toJsonV1(bool comma, bool isInVector)
 {
   std::string  out              = "";
   char*        isPatternEscaped = htmlEscape(isPattern.c_str());
@@ -118,18 +148,18 @@ std::string EntityId::render(bool comma, bool isInVector)
 */
 std::string EntityId::toJson(void) const
 {
-  std::string  out;
-  char*        typeEscaped  = htmlEscape(type.c_str());
-  char*        idEscaped    = htmlEscape(id.c_str());
+  JsonObjectHelper jh;
 
-  out += JSON_VALUE("id", idEscaped);
-  out += ",";
-  out += JSON_VALUE("type", typeEscaped);
+  char*  typeEscaped  = htmlEscape(type.c_str());
+  char*  idEscaped    = htmlEscape(id.c_str());
+
+  jh.addString("id", idEscaped);
+  jh.addString("type", typeEscaped);
 
   free(typeEscaped);
   free(idEscaped);
 
-  return out;
+  return jh.str();
 }
 
 

@@ -44,7 +44,6 @@
 *
 * Metadata interpreted by Orion Context Broker, i.e. not custom metadata
 */
-#define NGSI_MD_ID                 "ID"
 #define NGSI_MD_LOCATION           "location"
 #define NGSI_MD_PREVIOUSVALUE      "previousValue"   // Special metadata
 #define NGSI_MD_ACTIONTYPE         "actionType"      // Special metadata
@@ -80,6 +79,9 @@ typedef struct Metadata
   bool                       boolValue;    // "value" as a Boolean
   orion::CompoundValueNode*  compoundValueP;
 
+  bool                       shadowed;     // shadowed true means that the metadata is rendered only if explicitly required
+                                           // in metadata filter (typically for builtin metadata)
+
   Metadata();
   Metadata(Metadata* mP, bool useDefaultType = false);
   Metadata(const std::string& _name, const std::string& _type, const char* _value);
@@ -89,8 +91,8 @@ typedef struct Metadata
   Metadata(const std::string& _name, const mongo::BSONObj& mdB);
   ~Metadata();
 
-  std::string  render(bool comma);
-  std::string  toJson(bool isLastElement);
+  std::string  toJsonV1(bool comma);
+  std::string  toJson(void);
   void         release(void);
   void         fill(const struct Metadata& md);
   std::string  toStringValue(void) const;

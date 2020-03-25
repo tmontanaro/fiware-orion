@@ -28,7 +28,7 @@
 #include <string>
 #include <vector>
 
-#include "ngsi/ContextElementVector.h"
+#include "apiTypesV2/EntityVector.h"
 #include "orionTypes/UpdateActionType.h"
 #include "apiTypesV2/Entity.h"
 #include "apiTypesV2/Entities.h"
@@ -51,18 +51,20 @@ struct UpdateContextAttributeRequest;
 */
 typedef struct UpdateContextRequest
 {
-  ContextElementVector    contextElementVector;  // Mandatory
+  EntityVector            entityVector;          // Mandatory
   ActionType              updateActionType;      // Mandatory
 
   std::string             contextProvider;       // Not part of the payload - used internally only
+  ProviderFormat          providerFormat;        // Not part of the payload - used internally only
 
   UpdateContextRequest();
-  UpdateContextRequest(const std::string& _contextProvider, EntityId* eP);
+  UpdateContextRequest(const std::string& _contextProvider, ProviderFormat _providerFormat, Entity* eP);
 
-  std::string        render(ApiVersion apiVersion, bool asJsonObject);
+  std::string        toJsonV1(bool asJsonObject);
+  std::string        toJson(void);
   std::string        check(ApiVersion apiVersion, bool asJsonObject, const std::string& predetectedError);
   void               release(void);
-  ContextAttribute*  attributeLookup(EntityId* eP, const std::string& attributeName);
+  ContextAttribute*  attributeLookup(Entity* eP, const std::string& attributeName);
 
 
   void         fill(const UpdateContextElementRequest* ucerP,
@@ -77,14 +79,12 @@ typedef struct UpdateContextRequest
                     const std::string& entityType,
                     const std::string& isPattern,
                     const std::string& attributeName,
-                    const std::string& metaID,
                     ActionType         _updateActionType);
 
   void         fill(const UpdateContextAttributeRequest* ucarP,
                     const std::string&                   entityId,
                     const std::string&                   entityType,
                     const std::string&                   attributeName,
-                    const std::string&                   metaID,
                     ActionType                           _updateActionType);
 
   void         fill(const Entity* entP, ActionType _updateActionType);

@@ -64,7 +64,8 @@ class EntityId
   bool         equal(EntityId* eP);
   bool         isPatternIsTrue(void);
 
-  std::string  render(bool comma, bool isInVector = false);
+  std::string  toJson(void);
+  std::string  toJsonV1(bool comma, bool isInVector = false);
 
   std::string  check(RequestType  requestType);
 

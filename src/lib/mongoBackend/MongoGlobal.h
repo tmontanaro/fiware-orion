@@ -75,38 +75,15 @@ void mongoInit
   std::string  dbName,
   const char*  user,
   const char*  pwd,
+  const char*  mechanism,
+  const char*  authDb,
+  bool         dbSSL,
   bool         mtenant,
   int64_t      timeout,
   int          writeConcern,
   int          dbPoolSize,
   bool         mutexTimeStat
 );
-
-
-
-/* ****************************************************************************
-*
-* mongoStart - 
-*/
-extern bool mongoStart
-(
-  const char* host,
-  const char* db,
-  const char* rplSet,
-  const char* username,
-  const char* passwd,
-  bool        _multitenant,
-  double      timeout,
-  int         writeConcern = 1,
-  int         poolSize     = 10,
-  bool        semTimeStat  = false
-);
-
-
-
-#ifdef UNIT_TEST
-extern void setMongoConnectionForUnitTest(mongo::DBClientBase* _connection);
-#endif
 
 
 
@@ -123,25 +100,6 @@ extern Notifier* getNotifier(void);
 * setNotifier -
 */
 extern void setNotifier(Notifier* n);
-
-
-
-/* ****************************************************************************
-*
-* getMongoConnection -
-*
-* I would prefer to have per-collection methods, to have a better encapsulation, but
-* the Mongo C++ API seems not to work that way
-*/
-extern mongo::DBClientBase* getMongoConnection(void);
-
-
-
-/* ****************************************************************************
-*
-* releaseMongoConnection - 
-*/
-extern void releaseMongoConnection(mongo::DBClientBase* connection);
 
 
 
@@ -309,7 +267,7 @@ extern bool includedEntity(EntityId en, const EntityIdVector& entityIdV);
 *
 * includedAttribute -
 */
-extern bool includedAttribute(const ContextRegistrationAttribute& attr, const StringList& attrsV);
+extern bool includedAttribute(const std::string& attrName, const StringList& attrsV);
 
 
 
@@ -330,7 +288,6 @@ extern bool entitiesQuery
 (
   const EntityIdVector&            enV,
   const StringList&                attrL,
-  const StringList&                metadataList,
   const Restriction&               res,
   ContextElementResponseVector*    cerV,
   std::string*                     err,
@@ -351,7 +308,13 @@ extern bool entitiesQuery
 *
 * pruneContextElements -
 */
-extern void pruneContextElements(const ContextElementResponseVector& oldCerV, ContextElementResponseVector* newCerVP);
+extern void pruneContextElements
+(
+  ApiVersion                           apiVersion,
+  const StringList&                    attrsV,
+  const ContextElementResponseVector&  oldCerV,
+  ContextElementResponseVector*        newCerVP
+);
 
 
 
@@ -396,6 +359,41 @@ extern EntityIdVector subToEntityIdVector(const mongo::BSONObj& sub);
 
 /* ****************************************************************************
 *
+* subToNotifyList -
+*/
+void subToNotifyList
+(
+  const std::vector<std::string>&  modifiedAttrs,
+  const std::vector<std::string>&  conditionVector,
+  const std::vector<std::string>&  notificationVector,
+  const std::vector<std::string>&  entityAttrsVector,
+  StringList&                      attrL,
+  const bool&                      blacklist,
+  bool&                            op
+);
+
+
+
+/* ****************************************************************************
+*
+* subToAttributeList -
+*
+* Extract the attribute list from a BSON document (in the format of the csubs collection)
+*/
+extern StringList subToAttributeList
+(
+  const mongo::BSONObj&           attrL,
+  const bool&                     onlyChanged,
+  const bool&                     blacklist,
+  const std::vector<std::string>  modifiedAttrs,
+  const std::vector<std::string>  attributes,
+  bool&                           op
+);
+
+
+
+/* ****************************************************************************
+*
 * subToAttributeList -
 *
 * Extract the attribute list from a BSON document (in the format of the csubs collection)
@@ -427,7 +425,9 @@ extern mongo::BSONArray processConditionVector
   const std::string&                 status,
   const std::string&                 fiwareCorrelator,
   const std::vector<std::string>&    attrsOrder,
-  bool                               blacklist
+  bool                               blacklist,
+  const bool&                        skipInitialNotification,
+  ApiVersion                         apiVersion
 );
 
 
@@ -470,9 +470,18 @@ extern void releaseTriggeredSubscriptions(std::map<std::string, TriggeredSubscri
 
 /* ****************************************************************************
 *
+* servicePathFilterNeeded -
+*
+*/
+bool servicePathFilterNeeded(const std::vector<std::string>& servicePath);
+
+
+
+/* ****************************************************************************
+*
 * fillQueryServicePath -
 */
-extern mongo::BSONObj fillQueryServicePath(const std::vector<std::string>& servicePath);
+extern mongo::BSONObj fillQueryServicePath(const std::string& spKey, const std::vector<std::string>& servicePath);
 
 
 
@@ -498,13 +507,22 @@ extern bool someContextElementNotFound(const ContextElementResponse& cer);
 */
 extern void cprLookupByAttribute
 (
-  EntityId&                                en,
+  const Entity&                            en,
   const std::string&                       attrName,
   const ContextRegistrationResponseVector& crrV,
   std::string*                             perEntPa,
   MimeType*                                perEntPaMimeType,
   std::string*                             perAttrPa,
-  MimeType*                                perAttrPaMimeType
+  MimeType*                                perAttrPaMimeType,
+  ProviderFormat*                           providerFormatP
 );
+
+
+/* ****************************************************************************
+*
+* addBuiltins -
+*
+*/
+extern void addBuiltins(ContextElementResponse* cerP);
 
 #endif  // SRC_LIB_MONGOBACKEND_MONGOGLOBAL_H_

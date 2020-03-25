@@ -55,7 +55,6 @@
 #define REG_ENTITY_ISTYPEPATTERN     "isTypePattern"
 #define REG_ATTRS_NAME               "name"
 #define REG_ATTRS_TYPE               "type"
-#define REG_ATTRS_ISDOMAIN           "isDomain"
 #define REG_SERVICE_PATH             "servicePath"
 #define REG_FORMAT                   "format"
 #define REG_DESCRIPTION              "description"
@@ -112,8 +111,11 @@
 #define CSUB_QS                      "qs"
 #define CSUB_PAYLOAD                 "payload"
 #define CSUB_BLACKLIST               "blacklist"
+#define CSUB_ONLYCHANGED             "onlyChanged"
 #define CSUB_LASTFAILURE             "lastFailure"
+#define CSUB_LASTFAILUREASON         "lastFailureReason"
 #define CSUB_LASTSUCCESS             "lastSuccess"
+#define CSUB_LASTSUCCESSCODE         "lastSuccessCode"
 
 #define CASUB_EXPIRATION             "expiration"
 #define CASUB_REFERENCE              "reference"
@@ -134,5 +136,6 @@
 */
 #define STATUS_ACTIVE        "active"
 #define STATUS_INACTIVE      "inactive"
+#define STATUS_ONESHOT       "oneshot"
 
 #endif  // SRC_LIB_MONGOBACKEND_DBCONSTANTS_H_

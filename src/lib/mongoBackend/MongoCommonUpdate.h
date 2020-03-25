@@ -40,9 +40,9 @@
 *
 * processContextElement -
 */
-extern void processContextElement
+extern unsigned int processContextElement
 (
-  ContextElement*                      ceP,
+  Entity*                              ceP,
   UpdateContextResponse*               responseP,
   ActionType                           action,
   const std::string&                   tenant,
@@ -51,6 +51,7 @@ extern void processContextElement
   const std::string&                   xauthToken,
   const std::string&                   fiwareCorrelator,
   const std::string&                   ngsiV2AttrsFormat,
+  const bool&                          forcedUpdate,
   ApiVersion                           apiVersion       = V1,
   Ngsiv2Flavour                        ngsiV2Flavour    = NGSIV2_NO_FLAVOUR
 );

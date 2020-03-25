@@ -24,6 +24,8 @@
 */
 #include <stdint.h>
 
+#include "common/limits.h"
+
 //
 // http://www.boost.org/doc/libs/1_31_0/libs/spirit/doc/grammar.html:
 //
@@ -251,15 +253,29 @@ std::string nodeType(const std::string& nodeName, const std::string& value, orio
 /* ****************************************************************************
 *
 * eatCompound -
+*
+* This is a recusive function.
 */
-void eatCompound
+static void eatCompound
 (
   ConnectionInfo*                           ciP,
   orion::CompoundValueNode*                 containerP,
   boost::property_tree::ptree::value_type&  v,
-  const std::string&                        indent
+  const std::string&                        indent,
+  int                                       deep
 )
 {
+  if (deep > MAX_JSON_NESTING)
+  {
+    std::string details = std::string("compound attribute value has overpassed maximum nesting limit");
+    alarmMgr.badInput(clientIp, details);
+
+    ciP->httpStatusCode = SccBadRequest;
+    ciP->answer = details;
+
+    return;
+  }
+
   std::string                  nodeName     = v.first.data();
   std::string                  nodeValue    = v.second.data();
   boost::property_tree::ptree  subtree1     = (boost::property_tree::ptree) v.second;
@@ -286,10 +302,9 @@ void eatCompound
       }
 
       containerP->add(orion::ValueTypeString, nodeName, nodeValue);
-      LM_T(LmtCompoundValue, ("Added string '%s' (value: '%s') under '%s'",
+      LM_T(LmtCompoundValue, ("Added string '%s' (value: '%s')",
                               nodeName.c_str(),
-                              nodeValue.c_str(),
-                              containerP->cpath()));
+                              nodeValue.c_str()));
     }
     else if ((nodeName == "") && (nodeValue == "") && (noOfChildren == 0))  // Unnamed String with EMPTY VALUE
     {
@@ -298,36 +313,37 @@ void eatCompound
     }
     else if ((nodeName != "") && (nodeValue == "") && (noOfChildren == 0))  // Named Empty string
     {
-      LM_T(LmtCompoundValue, ("Adding container '%s' under '%s'", nodeName.c_str(), containerP->cpath()));
+      LM_T(LmtCompoundValue, ("Adding container '%s'", nodeName.c_str()));
       containerP = containerP->add(ValueTypeString, nodeName, "");
     }
     else if ((nodeName != "") && (nodeValue == ""))  // Named Container
     {
-      LM_T(LmtCompoundValue, ("Adding container '%s' under '%s'", nodeName.c_str(), containerP->cpath()));
+      LM_T(LmtCompoundValue, ("Adding container '%s'", nodeName.c_str()));
       containerP = containerP->add(ValueTypeObject, nodeName, "");
     }
     else if ((nodeName == "") && (nodeValue == ""))  // Name-Less container
     {
-      LM_T(LmtCompoundValue, ("Adding name-less container under '%s' (parent may be a Vector!)", containerP->cpath()));
+      LM_T(LmtCompoundValue, ("Adding name-less container (parent may be a Vector!)"));
       containerP->valueType = ValueTypeVector;
       containerP = containerP->add(ValueTypeObject, "item", "");
     }
     else if ((nodeName == "") && (nodeValue != ""))  // Name-Less String + its container is a vector
     {
       containerP->valueType = ValueTypeVector;
-      LM_T(LmtCompoundValue, ("Set '%s' to be a vector", containerP->cpath()));
+      LM_T(LmtCompoundValue, ("Set to be a vector"));
       containerP->add(orion::ValueTypeString, "item", nodeValue);
-      LM_T(LmtCompoundValue, ("Added a name-less string (value: '%s') under '%s'",
-                              nodeValue.c_str(), containerP->cpath()));
+      LM_T(LmtCompoundValue, ("Added a name-less string (value: '%s')", nodeValue.c_str()));
     }
     else
-      LM_T(LmtCompoundValue, ("IMPOSSIBLE !!!"));
+    {
+      LM_E(("Runtime Error (impossible siutation)"));
+    }
   }
 
   boost::property_tree::ptree subtree = (boost::property_tree::ptree) v.second;
   BOOST_FOREACH(boost::property_tree::ptree::value_type &v2, subtree)
   {
-    eatCompound(ciP, containerP, v2, indent + "  ");
+    eatCompound(ciP, containerP, v2, indent + "  ", deep + 1);
   }
 }
 
@@ -382,7 +398,7 @@ static std::string jsonParse
   {
 
     LM_T(LmtCompoundValue, ("Calling eatCompound for '%s'", path.c_str()));
-    eatCompound(ciP, NULL, v, "");
+    eatCompound(ciP, NULL, v, "", 0);
     compoundValueEnd(ciP, parseDataP);
 
     if (ciP->httpStatusCode != SccOk)
@@ -434,6 +450,14 @@ static std::string jsonParse
 static void backslashFix(char* content)
 {
   char* newContent = strdup(content);
+  if (newContent == NULL)
+  {
+    // strdup could return NULL if we run of of memory. Very unlikely, but
+    // theoretically possible (and static code analysis tools complaint about it ;)
+    LM_E(("Runtime Error (strdup returns NULL)"));
+    return;
+  }
+
   int   nIx        = 0;
 
   for (unsigned int ix = 0; ix < strlen(content); ++ix)
@@ -545,4 +569,28 @@ std::string jsonParse
   }
 
   return "OK";
+}
+
+
+
+/* ****************************************************************************
+*
+* safeValue -
+*
+* If the string passed as argument has \0, truncates to the first \0. Not doing
+* so can cause problems when that value is used as field in mongo backend.
+*
+*/
+std::string safeValue(const std::string& s)
+{
+  unsigned int pos = s.find('\0');
+  if (pos != std::string::npos)
+  {
+     return s.substr(0, pos);
+  }
+  else
+  {
+    return s;
+  }
+
 }

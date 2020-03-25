@@ -30,14 +30,15 @@
 
 #include "common/globals.h"
 #include "common/tag.h"
+#include "common/JsonHelper.h"
 #include "alarmMgr/alarmMgr.h"
 #include "convenience/UpdateContextElementRequest.h"
 #include "convenience/AppendContextElementRequest.h"
-#include "ngsi/ContextElement.h"
 #include "ngsi/ContextAttribute.h"
 #include "ngsi10/UpdateContextRequest.h"
 #include "ngsi10/UpdateContextResponse.h"
 #include "convenience/UpdateContextAttributeRequest.h"
+
 
 
 /* ****************************************************************************
@@ -54,31 +55,58 @@ UpdateContextRequest::UpdateContextRequest()
 *
 * UpdateContextRequest::UpdateContextRequest -
 */
-UpdateContextRequest::UpdateContextRequest(const std::string& _contextProvider, EntityId* eP)
+UpdateContextRequest::UpdateContextRequest(const std::string& _contextProvider, ProviderFormat _providerFormat, Entity* eP)
 {
   contextProvider = _contextProvider;
-  contextElementVector.push_back(new ContextElement(eP));
+  providerFormat  = _providerFormat;
+  Entity* neweP = new Entity(eP->id, eP->type, eP->isPattern);
+  neweP->renderId = eP->renderId;
+  entityVector.push_back(neweP);
 }
+
 
 
 /* ****************************************************************************
 *
-* UpdateContextRequest::render -
+* UpdateContextRequest::toJson -
 */
-std::string UpdateContextRequest::render(ApiVersion apiVersion, bool asJsonObject)
+std::string UpdateContextRequest::toJson(void)
+{
+  JsonObjectHelper jh;
+
+  // FIXME P2: maybe we should have a toJson() wrapper for toJson(NGSI_V2_NORMALIZED, nullFilter, false, nullFilter),
+  // if this pattern is common in the code (not sure right now)
+  std::vector<std::string>  nullFilter;
+
+  jh.addRaw("entities", entityVector.toJson(NGSI_V2_NORMALIZED, nullFilter, false, nullFilter));
+
+  jh.addString("actionType", actionTypeString(V2, updateActionType));
+
+  return jh.str();
+}
+
+
+
+/* ****************************************************************************
+*
+* UpdateContextRequest::toJsonV1 -
+*/
+std::string UpdateContextRequest::toJsonV1(bool asJsonObject)
 {
   std::string  out = "";
 
-  // JSON commas:
-  // Both fields are MANDATORY, so, comma after "contextElementVector"
-  //  
+  //
+  // About JSON commas:
+  //   Both fields are MANDATORY, so, always comma after "entityVector"
+  //
   out += startTag();
-  out += contextElementVector.render(apiVersion, asJsonObject, UpdateContext, true);
-  out += valueTag("updateAction", actionTypeString(apiVersion, updateActionType), false);
+  out += entityVector.toJsonV1(asJsonObject, UpdateContext, true);
+  out += valueTag("updateAction", actionTypeString(V1, updateActionType), false);
   out += endTag(false);
 
   return out;
 }
+
 
 
 /* ****************************************************************************
@@ -93,13 +121,13 @@ std::string UpdateContextRequest::check(ApiVersion apiVersion, bool asJsonObject
   if (predetectedError != "")
   {
     response.errorCode.fill(SccBadRequest, predetectedError);
-    return response.render(apiVersion, asJsonObject);
+    return response.toJsonV1(asJsonObject);
   }
 
-  if ((res = contextElementVector.check(apiVersion, UpdateContext)) != "OK")
+  if ((res = entityVector.check(apiVersion, UpdateContext)) != "OK")
   {
     response.errorCode.fill(SccBadRequest, res);
-    return response.render(apiVersion, asJsonObject);
+    return response.toJsonV1(asJsonObject);
   }
 
   return "OK";
@@ -113,7 +141,7 @@ std::string UpdateContextRequest::check(ApiVersion apiVersion, bool asJsonObject
 */
 void UpdateContextRequest::release(void)
 {
-  contextElementVector.release();
+  entityVector.release();
 }
 
 
@@ -129,15 +157,11 @@ void UpdateContextRequest::fill
   const std::string&                 entityType
 )
 {
-  ContextElement* ceP = new ContextElement();
+  Entity* eP = new Entity(entityId, entityType, "false");
 
-  ceP->entityId.fill(entityId, entityType, "false");
+  eP->attributeVector.fill(ucerP->contextAttributeVector);
 
-  ceP->attributeDomainName.fill(ucerP->attributeDomainName);
-  ceP->contextAttributeVector.fill((ContextAttributeVector*) &ucerP->contextAttributeVector);
-  ceP->domainMetadataVector.fill((MetadataVector*) &ucerP->domainMetadataVector);
-
-  contextElementVector.push_back(ceP);
+  entityVector.push_back(eP);
 
   updateActionType = ActionTypeUpdate;  // Coming from an UpdateContextElementRequest (PUT), must be UPDATE
 }
@@ -155,15 +179,11 @@ void UpdateContextRequest::fill
   const std::string&                  entityType
 )
 {
-  ContextElement* ceP = new ContextElement();
+  Entity* eP = new Entity(entityId, entityType, "false");
 
-  ceP->entityId.fill(entityId, entityType, "false");
+  eP->attributeVector.fill(acerP->contextAttributeVector);
 
-  ceP->attributeDomainName.fill(acerP->attributeDomainName);
-  ceP->contextAttributeVector.fill((ContextAttributeVector*) &acerP->contextAttributeVector);
-  ceP->domainMetadataVector.fill((MetadataVector*) &acerP->domainMetadataVector);
-
-  contextElementVector.push_back(ceP);
+  entityVector.push_back(eP);
   updateActionType = ActionTypeAppend;  // Coming from an AppendContextElementRequest (POST), must be APPEND
 }
 
@@ -179,28 +199,20 @@ void UpdateContextRequest::fill
   const std::string& entityType,
   const std::string& isPattern,
   const std::string& attributeName,
-  const std::string& metaID,
   ActionType         _updateActionType
 )
 {
-  ContextElement* ceP = new ContextElement();
+  Entity* eP = new Entity();
 
-  ceP->entityId.fill(entityId, entityType, isPattern);
-  contextElementVector.push_back(ceP);
+  eP->fill(entityId, entityType, isPattern);
+  entityVector.push_back(eP);
 
   updateActionType = _updateActionType;
 
   if (attributeName != "")
   {
     ContextAttribute* caP = new ContextAttribute(attributeName, "", "");
-    ceP->contextAttributeVector.push_back(caP);
-
-    if (metaID != "")
-    {
-      Metadata* mP = new Metadata("ID", "", metaID);
-
-      caP->metadataVector.push_back(mP);
-    }
+    eP->attributeVector.push_back(caP);
   }
 }
 
@@ -215,12 +227,11 @@ void UpdateContextRequest::fill
   const UpdateContextAttributeRequest* ucarP,
   const std::string&                   entityId,
   const std::string&                   entityType,
-  const std::string&                   attributeName,
-  const std::string&                   metaID,
+  const std::string&                   attributeName,  
   ActionType                           _updateActionType
 )
 {
-  ContextElement*   ceP = new ContextElement();
+  Entity*           eP = new Entity(entityId, entityType, "false");
   ContextAttribute* caP;
 
   if (ucarP->compoundValueP != NULL)
@@ -234,29 +245,9 @@ void UpdateContextRequest::fill
   }
 
   caP->metadataVector.fill((MetadataVector*) &ucarP->metadataVector);
-  ceP->contextAttributeVector.push_back(caP);
-  ceP->entityId.fill(entityId, entityType, "false");
+  eP->attributeVector.push_back(caP);
 
-  contextElementVector.push_back(ceP);
-
-  //
-  // If there is a metaID, then the metadata named ID must exist.
-  // If it doesn't exist already, it must be created
-  //
-  if (metaID != "")
-  {
-    Metadata* mP = caP->metadataVector.lookupByName("ID");
-
-    if (mP == NULL)
-    {
-      mP = new Metadata("ID", "", metaID);
-      caP->metadataVector.push_back(mP);
-    }
-    else if (mP->stringValue != metaID)
-    {
-      alarmMgr.badInput(clientIp, "metaID differs in URI and payload");
-    }
-  }
+  entityVector.push_back(eP);
 
   updateActionType = _updateActionType;
 }
@@ -269,11 +260,11 @@ void UpdateContextRequest::fill
 */
 void UpdateContextRequest::fill(const Entity* entP, ActionType _updateActionType)
 {
-  ContextElement*  ceP = new ContextElement(entP->id, entP->type, "false");
+  Entity*  eP = new Entity(entP->id, entP->type, "false");
 
-  ceP->contextAttributeVector.fill((ContextAttributeVector*) &entP->attributeVector);
+  eP->attributeVector.fill(entP->attributeVector);
 
-  contextElementVector.push_back(ceP);
+  entityVector.push_back(eP);
   updateActionType = _updateActionType;
 }
 
@@ -291,11 +282,11 @@ void UpdateContextRequest::fill
   const std::string&   type
 )
 {
-  ContextElement*   ceP = new ContextElement(entityId, type, "false");
-  ContextAttribute* aP  = new ContextAttribute(attributeP);
+  Entity*           eP = new Entity(entityId, type, "false");
+  ContextAttribute* aP = new ContextAttribute(attributeP);
 
-  ceP->contextAttributeVector.push_back(aP);
-  contextElementVector.push_back(ceP);
+  eP->attributeVector.push_back(aP);
+  entityVector.push_back(eP);
   updateActionType = _updateActionType;
 }
 
@@ -319,17 +310,17 @@ void UpdateContextRequest::fill
 
   for (unsigned int eIx = 0; eIx < entities->vec.size(); ++eIx)
   {
-    Entity*           eP  = entities->vec[eIx];
-    ContextElement*   ceP = new ContextElement(eP->id, eP->type, eP->isPattern);
+    Entity*  eP    = entities->vec[eIx];
+    Entity*  neweP = new Entity(eP->id, eP->type, eP->isPattern);
 
     for (unsigned int aIx = 0; aIx < eP->attributeVector.size(); ++aIx)
     {
       // NOT copying the attribute, just pointing to it - original vector is then cleared
-      ceP->contextAttributeVector.push_back(eP->attributeVector[aIx]);
+      neweP->attributeVector.push_back(eP->attributeVector[aIx]);
     }
 
     eP->attributeVector.vec.clear();  // original vector is cleared
-    contextElementVector.push_back(ceP);
+    entityVector.push_back(neweP);
   }
 }
 
@@ -339,22 +330,22 @@ void UpdateContextRequest::fill
 *
 * UpdateContextRequest::attributeLookup -
 */
-ContextAttribute* UpdateContextRequest::attributeLookup(EntityId* eP, const std::string& attributeName)
+ContextAttribute* UpdateContextRequest::attributeLookup(Entity* eP, const std::string& attributeName)
 {
-  for (unsigned int ceIx = 0; ceIx < contextElementVector.size(); ++ceIx)
+  for (unsigned int ceIx = 0; ceIx < entityVector.size(); ++ceIx)
   {
-    EntityId* enP = &contextElementVector[ceIx]->entityId;
+    Entity* enP = entityVector[ceIx];
 
     if ((enP->id != eP->id) || (enP->type != eP->type))
     {
       continue;
     }
 
-    ContextElement* ceP = contextElementVector[ceIx];
+    Entity* eP = entityVector[ceIx];
 
-    for (unsigned int aIx = 0; aIx < ceP->contextAttributeVector.size(); ++aIx)
+    for (unsigned int aIx = 0; aIx < eP->attributeVector.size(); ++aIx)
     {
-      ContextAttribute* aP = ceP->contextAttributeVector[aIx];
+      ContextAttribute* aP = eP->attributeVector[aIx];
 
       if (aP->name == attributeName)
       {

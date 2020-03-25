@@ -54,7 +54,8 @@ extern bool collectionRangedQuery
 (
   mongo::DBClientBase*                   connection,
   const std::string&                     col,
-  const mongo::Query&                    q,
+  const mongo::BSONObj&                  q,
+  const mongo::BSONObj&                  sort,
   int                                    limit,
   int                                    offset,
   std::auto_ptr<mongo::DBClientCursor>*  cursor,
@@ -212,6 +213,7 @@ extern bool connectionAuth
   const std::string&    db,
   const std::string&    user,
   const std::string&    password,
+  const std::string&    mechanism,
   std::string*          err
 );
 

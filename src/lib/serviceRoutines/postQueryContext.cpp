@@ -31,6 +31,7 @@
 #include "common/clockFunctions.h"
 #include "alarmMgr/alarmMgr.h"
 
+#include "logMsg/logMsg.h"
 #include "logMsg/traceLevels.h"
 
 #include "mongoBackend/mongoQueryContext.h"
@@ -46,6 +47,7 @@
 #include "rest/OrionError.h"
 #include "serviceRoutines/postQueryContext.h"
 #include "jsonParse/jsonRequest.h"
+#include "jsonParseV2/parseEntitiesResponse.h"
 
 
 
@@ -55,7 +57,26 @@
 */
 static char* jsonPayloadClean(const char* payload)
 {
-  return (char*) strstr(payload, "{");
+  //
+  // After HTTP headers comes an empty line.
+  // After this empty line comes the payload.
+  // This function returns a pointer to the first byte after an empty line, if found
+  // This "first byte" is the first byte of the payload
+  //
+  while (*payload != 0)
+  {
+    if (*payload == '\n')  // One newline is found
+    {
+      if (payload[1] == '\n')  // And the second one - we have found the start of the payload
+        return (char*) &payload[2];
+      if ((payload[1] == '\r') && (payload[2] == '\n'))  // "windows style newline with \r\n"
+        return (char*) &payload[3];
+    }
+
+    ++payload;
+  }
+
+  return NULL;
 }
 
 
@@ -101,29 +122,136 @@ static bool queryForward(ConnectionInfo* ciP, QueryContextRequest* qcrP, QueryCo
 
 
   //
-  // 2. Render the string of the request we want to forward
+  // 2. Prepare the request to forward
+  //    - If V1: Render the payload
+  //    - If V2: Setup the URI params
   //
-  std::string  payload;
-  TIMED_RENDER(payload = qcrP->render());
+  std::string     payload;
+  std::string     verb;
+  std::string     resource;
+  std::string     tenant       = ciP->tenant;
+  std::string     servicePath  = (ciP->httpHeaders.servicePathReceived == true)? ciP->httpHeaders.servicePath : "";
+  std::string     mimeType;
 
-  char* cleanPayload = (char*) payload.c_str();;
+  if (qcrP->providerFormat == PfJson)
+  {
+    verb      = "POST";
+    resource  = prefix + "/queryContext";
+    mimeType  = "application/json";
+
+    TIMED_RENDER(payload = qcrP->toJsonV1());
+  }
+  else
+  {
+    verb      = "POST";
+    resource  = prefix + "/op/query";
+    mimeType  = "application/json";
+
+    TIMED_RENDER(payload = qcrP->toJson());
+#if 0
+    // FIXME #3485: this part is not removed by the moment, in the case it may be useful in the
+    // context of issue #3485
+
+    //
+    // NGSIv2 forward: instead of payload, URI params are used
+    //
+    std::string  extraParams;
+
+    verb      = "GET";
+    resource  = prefix + "/entities";
+
+    //
+    // FIXME #3068: For requests where the type comes in the payload (batch op + NGSIv1), we'd need to add an else part
+    //              to extract the type from the incoming payload
+    //
+    if (ciP->uriParam["type"] != "")
+    {
+      extraParams += "&type=";
+      extraParams += ciP->uriParam["type"];
+    }
+
+    if (qcrP->entityIdVector.size() > 0)
+    {
+      //
+      // A few remarks about the list of entity ids:
+      //   - If more than one ID is present, we just make a comma-separated list of them
+      //   - We can't allow mixes between id and idPattern
+      //   - There can only be ONE idPattern (lists aren't supported for idPatterns)
+      //   - If an idPattern is present and equal to ".*", we can simply ignore it - .* matches ALL entity ids
+      //
+      if ((qcrP->entityIdVector.size() == 1) && (qcrP->entityIdVector[0]->isPattern == "true"))
+      {
+        //
+        // This is the only case where isPattern is allowed to be true - ONE entity in qcrP->entityIdVector
+        // In all other places (see below) isPattern set to TRUE is an error (that is silently ignored)
+        //
+
+        // If the idPattern is '.*', then no need to add it to the query
+        if (qcrP->entityIdVector[0]->id != ".*")
+        {
+          extraParams += "&idPattern=";
+          extraParams += qcrP->entityIdVector[0]->id;
+        }
+      }
+      else
+      {
+        extraParams += "&id=";
+
+        for (unsigned int ix = 0; ix < qcrP->entityIdVector.size(); ix++)
+        {
+          if (qcrP->entityIdVector[ix]->isPattern == "false")  // Silently ignored if "true"
+          {
+            if (ix != 0)
+            {
+              extraParams += ",";
+            }
+
+            extraParams += qcrP->entityIdVector[ix]->id;
+          }
+        }
+      }
+    }
+
+    if (ciP->uriParam["attrs"] != "")
+    {
+      extraParams += "&attrs=";
+      extraParams += ciP->uriParam["attrs"];
+    }
+    else if (qcrP->attributeList.size() != 0)
+    {
+      extraParams += "&attrs=";
+      extraParams += qcrP->attributeList[0];
+
+      for (unsigned int ix = 1; ix < qcrP->attributeList.size(); ix++)
+      {
+        extraParams += ",";
+        extraParams += qcrP->attributeList[ix];
+      }
+    }
+
+    if (extraParams != "")
+    {
+      char* xParams = (char*) &(extraParams.c_str())[1];  // Remove first '&'
+
+      resource += "?";
+      resource += xParams;
+    }
+#endif
+  }
 
   //
   // 3. Send the request to the Context Provider (and await the reply)
-  // FIXME P7: Should Rush be used?
   //
-  std::string     verb         = "POST";
-  std::string     resource     = prefix + "/queryContext";
-  std::string     tenant       = ciP->tenant;
-  std::string     servicePath  = (ciP->httpHeaders.servicePathReceived == true)? ciP->httpHeaders.servicePath : "";
-  std::string     mimeType     = "application/json";
   std::string     out;
   int             r;
 
-  LM_T(LmtCPrForwardRequestPayload, ("forward queryContext request payload: %s", payload.c_str()));
+  LM_T(LmtCPrForwardRequestPayload, ("Forward Query: %s %s: %s", verb.c_str(), resource.c_str(), payload.c_str()));
 
-  std::map<std::string, std::string> noHeaders;
-  r = httpRequestSend(ip,
+  std::map<std::string, std::string>  noHeaders;
+  long long                           statusCode; // not used by the moment
+
+  r = httpRequestSend(fromIp,  // thread variable
+                      ip,
                       port,
                       protocol,
                       verb,
@@ -135,76 +263,114 @@ static bool queryForward(ConnectionInfo* ciP, QueryContextRequest* qcrP, QueryCo
                       payload,
                       ciP->httpHeaders.correlator,
                       "",
-                      false,
-                      true,
                       &out,
+                      &statusCode,
                       noHeaders,
                       mimeType);
 
   if (r != 0)
   {
-    LM_W(("Runtime Error (error forwarding 'Query' to providing application)"));
+    LM_E(("Runtime Error (error '%s' forwarding 'Query' to providing application)", out.c_str()));
     return false;
   }
 
-  LM_T(LmtCPrForwardRequestPayload, ("forward queryContext response payload: %s", out.c_str()));
+  LM_T(LmtCPrForwardResponsePayload, ("forward queryContext response payload: %s", out.c_str()));
 
 
   //
   // 4. Parse the response and fill in a binary QueryContextResponse
   //
-  std::string  s;
-  std::string  errorMsg;
-
-
-  cleanPayload = jsonPayloadClean(out.c_str());
-
-  if ((cleanPayload == NULL) || (cleanPayload[0] == 0))
-  {
-    //
-    // This is really an internal error in the Context Provider
-    // It is not in the orion broker though, so 404 is returned
-    //
-    LM_W(("Other Error (context provider response to QueryContext is empty)"));
-    return false;
-  }
-
-  //
-  // NOTE
-  // When coming from a convenience operation, such as GET /v1/contextEntities/EID/attributes/attrName,
-  // the verb/method in ciP is GET. However, the parsing function expects a POST, as if it came from a
-  // POST /v1/queryContext.
-  // So, here we change the verb/method for POST.
-  //
   ParseData parseData;
+  char*     cleanPayload = jsonPayloadClean(out.c_str());
 
-  ciP->verb   = POST;
-  ciP->method = "POST";
 
-  // Note that jsonTreat() is thought for client-to-CB interactions, thus it modifies ciP->httpStatusCode
-  // Thus, we need to preserve it before (and recover after) in order a fail in the CB-to-CPr interaction doesn't
-  // "corrupt" the status code in the client-to-CB interaction.
-  // FIXME P5: not sure if I like this approach... very "hacking-style". Probably it would be better
-  // to make JSON parsing logic (internal to jsonTreat()) independent of ciP (in fact, parsing process
-  // hasn't anything to do with connection).
-  HttpStatusCode sc = ciP->httpStatusCode;
-  s = jsonTreat(cleanPayload, ciP, &parseData, RtQueryContextResponse, "queryContextResponse", NULL);
-  ciP->httpStatusCode = sc;
-
-  if (s != "OK")
+  if (qcrP->providerFormat == PfJson)
   {
-    LM_W(("Internal Error (error parsing reply from prov app: %s)", errorMsg.c_str()));
-    parseData.qcr.res.release();
-    parseData.qcrs.res.release();
-    return false;
+    std::string  s;
+    std::string  errorMsg;
+
+    if ((cleanPayload == NULL) || (cleanPayload[0] == 0))
+    {
+      //
+      // This is really an internal error in the Context Provider
+      // It is not in the orion broker though, so 404 is returned
+      //
+      LM_W(("Other Error (context provider response to QueryContext is empty)"));
+      return false;
+    }
+
+    //
+    // NOTE
+    // When coming from a convenience operation, such as GET /v1/contextEntities/EID/attributes/attrName,
+    // the verb/method in ciP is GET. However, the parsing function expects a POST, as if it came from a
+    // POST /v1/queryContext.
+    // So, here we change the verb/method for POST.
+    //
+    ciP->verb   = POST;
+    ciP->method = "POST";
+
+    // Note that jsonTreat() is thought for client-to-CB interactions, thus it modifies ciP->httpStatusCode
+    // Thus, we need to preserve it before (and recover after) in order a fail in the CB-to-CPr interaction doesn't
+    // "corrupt" the status code in the client-to-CB interaction.
+    // FIXME P5: not sure if I like this approach... very "hacking-style". Probably it would be better
+    // to make JSON parsing logic (internal to jsonTreat()) independent of ciP (in fact, parsing process
+    // hasn't anything to do with connection).
+    HttpStatusCode sc = ciP->httpStatusCode;
+    s = jsonTreat(cleanPayload, ciP, &parseData, RtQueryContextResponse, NULL);
+    ciP->httpStatusCode = sc;
+
+    if (s != "OK")
+    {
+      LM_W(("Internal Error (error parsing reply from prov app: %s)", errorMsg.c_str()));
+      parseData.qcr.res.release();
+      parseData.qcrs.res.release();
+      return false;
+    }
+
+
+    //
+    // 5. Fill in the response from the redirection into the response of this function
+    //
+    qcrsP->fill(&parseData.qcrs.res);
   }
+  else
+  {
+    bool                        b;
+    Entities                    entities;
+    OrionError                  oe;
 
+    // Note that parseEntitiesResponse() is thought for client-to-CB interactions, so it takes into account
+    // ciP->uriParamOptions[OPT_KEY_VALUES]. In this case, we never use keyValues in the CB-to-CPr so we
+    // set to false and restore its original value later. In this case it seems it is not needed to preserve
+    // ciP->httpStatusCode as in the similar case above
+    // FIXME P5: not sure if I like this approach... very "hacking-style". Probably it would be better
+    // to make JSON parsing logic (internal to parseEntitiesResponse()) independent of ciP and to pass the
+    // keyValue directly as function parameter.
+    bool previousKeyValues = ciP->uriParamOptions[OPT_KEY_VALUES];
+    ciP->uriParamOptions[OPT_KEY_VALUES] = false;
+    b = parseEntitiesResponse(ciP, cleanPayload, &entities, &oe);
+    ciP->uriParamOptions[OPT_KEY_VALUES] = previousKeyValues;
 
-  //
-  // 5. Fill in the response from the redirection into the response of this function
-  //
-  qcrsP->fill(&parseData.qcrs.res);
+    if (b == false)
+    {
+      LM_W(("Internal Error (error parsing reply from context provider: %s)", oe.details.c_str()));
+      parseData.qcr.res.release();
+      parseData.qcrs.res.release();
+      return false;
+    }
 
+    //
+    // 5. Fill in the response from the redirection into the response of this function
+    //
+    if (entities.size() > 0)
+    {
+      qcrsP->fill(entities);
+    }
+    else
+    {
+      qcrsP->errorCode.fill(SccContextElementNotFound);
+    }
+  }
 
   //
   // 6. 'Fix' StatusCode
@@ -236,14 +402,14 @@ static bool forwardsPending(QueryContextResponse* qcrsP)
   {
     ContextElementResponse* cerP  = qcrsP->contextElementResponseVector[ix];
 
-    if (cerP->contextElement.providingApplicationList.size() != 0)
+    if (cerP->entity.providingApplicationList.size() != 0)
     {
       return true;
     }
 
-    for (unsigned int aIx = 0 ; aIx < cerP->contextElement.contextAttributeVector.size(); ++aIx)
+    for (unsigned int aIx = 0 ; aIx < cerP->entity.attributeVector.size(); ++aIx)
     {
-      ContextAttribute* aP  = cerP->contextElement.contextAttributeVector[aIx];
+      ContextAttribute* aP  = cerP->entity.attributeVector[aIx];
 
       if (aP->providingApplication.get() != "")
       {
@@ -322,7 +488,7 @@ std::string postQueryContext
     // Bad Input detected by Mongo Backend - request ends here !
     OrionError oe(qcrsP->errorCode);
 
-    TIMED_RENDER(answer = oe.render());
+    TIMED_RENDER(answer = oe.toJsonV1());
     qcrP->release();
     return answer;
   }
@@ -354,12 +520,11 @@ std::string postQueryContext
   //
   if (forwardsPending(qcrsP) == false)
   {
-    TIMED_RENDER(answer = qcrsP->render(ciP->apiVersion, asJsonObject));
+    TIMED_RENDER(answer = qcrsP->toJsonV1(asJsonObject));
 
     qcrP->release();
     return answer;
   }
-
 
   //
   // 03. Complex case (queries to be forwarded)
@@ -381,8 +546,8 @@ std::string postQueryContext
 
   for (unsigned int ix = 0 ; ix < qcrsP->contextElementResponseVector.size(); ++ix)
   {
-    ContextElementResponse* cerP  = qcrsP->contextElementResponseVector[ix];
-    EntityId*               eP    = &cerP->contextElement.entityId;
+    ContextElementResponse*  cerP  = qcrsP->contextElementResponseVector[ix];
+    EntityId                 en(cerP->entity.id, cerP->entity.type, cerP->entity.isPattern);
 
     //
     // If a Context Provider has been registered with an empty attribute list for
@@ -392,11 +557,11 @@ std::string postQueryContext
     // When there is a Context Provider in ContextElement::providingApplicationList, then the
     // request must be sent to that Context Provider also
     //
-    for (unsigned int ix = 0; ix < cerP->contextElement.providingApplicationList.size(); ++ix)
+    for (unsigned int ix = 0; ix < cerP->entity.providingApplicationList.size(); ++ix)
     {
       QueryContextRequest* requestP;
 
-      requestP = new QueryContextRequest(cerP->contextElement.providingApplicationList[ix].get(), eP, qcrP->attributeList);
+      requestP = new QueryContextRequest(cerP->entity.providingApplicationList[ix].get(), &en, qcrP->attributeList, cerP->entity.providingApplicationList[ix].providerFormat);
       requestV.push_back(requestP);
     }
 
@@ -404,15 +569,15 @@ std::string postQueryContext
     // What if the Attribute Vector of the ContextElementResponse is empty?
     // For now, just push it into localQcrsP, but only if its local, i.e. its contextElement.providingApplicationList is empty
     //
-    if ((cerP->contextElement.contextAttributeVector.size() == 0) && (cerP->contextElement.providingApplicationList.size() == 0))
+    if ((cerP->entity.attributeVector.size() == 0) && (cerP->entity.providingApplicationList.size() == 0))
     {
-      localQcrsP->contextElementResponseVector.push_back(new ContextElementResponse(eP, NULL));
+      localQcrsP->contextElementResponseVector.push_back(new ContextElementResponse(&en, NULL));
     }
     else
     {
-      for (unsigned int aIx = 0; aIx < cerP->contextElement.contextAttributeVector.size(); ++aIx)
+      for (unsigned int aIx = 0; aIx < cerP->entity.attributeVector.size(); ++aIx)
       {
-        ContextAttribute*    aP  = cerP->contextElement.contextAttributeVector[aIx];
+        ContextAttribute* aP  = cerP->entity.attributeVector[aIx];
 
         //
         // An empty providingApplication means the attribute is local
@@ -431,16 +596,16 @@ std::string postQueryContext
           // If we find a suitable existing contextElementResponse, we put it there,
           // otherwise, we have to create a new contextElementResponse.
           //
-          ContextElementResponse* contextElementResponseP = localQcrsP->contextElementResponseVector.lookup(eP);
+          ContextElementResponse* contextElementResponseP = localQcrsP->contextElementResponseVector.lookup(&cerP->entity);
 
           if (contextElementResponseP == NULL)
           {
-            contextElementResponseP = new ContextElementResponse(eP, aP);
+            contextElementResponseP = new ContextElementResponse(&en, aP);
             localQcrsP->contextElementResponseVector.push_back(contextElementResponseP);
           }
           else
           {
-            contextElementResponseP->contextElement.contextAttributeVector.push_back(new ContextAttribute(aP));
+            contextElementResponseP->entity.attributeVector.push_back(new ContextAttribute(aP));
           }
 
           continue;
@@ -450,16 +615,16 @@ std::string postQueryContext
         //
         // Not a local attribute - aP->providingApplication is not empty
         //
-        QueryContextRequest* requestP = requestV.lookup(aP->providingApplication.get(), eP);
+        QueryContextRequest* requestP = requestV.lookup(aP->providingApplication.get(), &en);
 
         if (requestP == NULL)
         {
-          requestP = new QueryContextRequest(aP->providingApplication.get(), eP, aP->name);
+          requestP = new QueryContextRequest(aP->providingApplication.get(), &en, aP->name, aP->providingApplication.providerFormat);
           requestV.push_back(requestP);
         }
         else
         {
-          EntityId* entityP = new EntityId(eP);
+          EntityId* entityP = new EntityId(&en);
           bool      pushed;
 
           requestP->attributeList.push_back_if_absent(aP->name);
@@ -530,7 +695,7 @@ std::string postQueryContext
   std::string detailsString  = ciP->uriParam[URI_PARAM_PAGINATION_DETAILS];
   bool        details        = (strcasecmp("on", detailsString.c_str()) == 0)? true : false;
 
-  TIMED_RENDER(answer = responseV.render(ciP->apiVersion, asJsonObject, details, qcrsP->errorCode.details));
+  TIMED_RENDER(answer = responseV.toJsonV1(asJsonObject, details, qcrsP->errorCode.details));
 
 
   //

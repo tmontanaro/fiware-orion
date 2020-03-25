@@ -1,6 +1,6 @@
 # How to deploy Orion Context Broker in a Docker Swarm cluster
 
-[Docker Swarm](https://docs.docker.com/engine/swarm/) is the official docker 
+[Docker Swarm](https://docs.docker.com/engine/swarm/) is the official docker
 cluster management solution and it is natively integrated with Docker Engine.
 
 You can find detailed instructions and consideration on running Orion Context
@@ -35,7 +35,7 @@ $ chmod +rx /usr/local/bin/miniswarm
 $ miniswarm start 3
 ```
 
-The above command will create a Docker Swarm cluster of 3 nodes, including 
+The above command will create a Docker Swarm cluster of 3 nodes, including
 1 master and 2 workers nodes.
 
 ### Connect to the cluster
@@ -52,10 +52,10 @@ You can check that by running
 ```bash
 $ docker machine ls
 
-NAME          ACTIVE   DRIVER       STATE     URL                          SWARM   DOCKER        ERRORS  
-ms-manager0   *        virtualbox   Running   tcp://192.168.99.101:2376            v18.02.0-ce   
-ms-worker0    -        virtualbox   Running   tcp://192.168.99.102:2376            v18.02.0-ce   
-ms-worker1    -        virtualbox   Running   tcp://192.168.99.100:2376            v18.02.0-ce   
+NAME          ACTIVE   DRIVER       STATE     URL                          SWARM   DOCKER        ERRORS
+ms-manager0   *        virtualbox   Running   tcp://192.168.99.101:2376            v18.02.0-ce
+ms-worker0    -        virtualbox   Running   tcp://192.168.99.102:2376            v18.02.0-ce
+ms-worker1    -        virtualbox   Running   tcp://192.168.99.100:2376            v18.02.0-ce
 ```
 
 The node with `*` is the node to which your docker client will connect.
@@ -86,9 +86,7 @@ Details on how to deploy a MongoDB ReplicaSet in Docker Swarm are available
     services:
 
       mongo:
-        image: mongo:3.2
-        # the bind_ip option is required from MONGO Version 3.6, alternatively you can use --bind_ip_all
-        # However, note that Orion doesn't work yet with MongoDB 3.6. Have a look to issue https://github.com/telefonicaid/fiware-orion/issues/3070
+        image: mongo:3.6
         entrypoint: [ "/usr/bin/mongod", "--replSet", "rs", "--journal", "--smallfiles", "--bind_ip", "0.0.0.0"]
         volumes:
           - mongodata:/data/db
@@ -221,7 +219,7 @@ Details on how to deploy a MongoDB ReplicaSet in Docker Swarm are available
       "compiled_by" : "root",
       "compiled_in" : "4d72f1940cd1",
       "release_date" : "Wed Feb 21 15:56:28 UTC 2018",
-      "doc" : "https://fiware-orion.readthedocs.org/en/master/"
+      "doc" : "https://fiware-orion.rtfd.io/"
     }
     }
     ```
@@ -232,8 +230,8 @@ Details on how to deploy a MongoDB ReplicaSet in Docker Swarm are available
     $ docker service scale orion_orion=3
 
     orion_orion scaled to 3
-    overall progress: 2 out of 3 tasks 
-    1/3: running   [==================================================>] 
-    2/3: preparing [=================================>                 ] 
-    3/3: running   [==================================================>] 
+    overall progress: 2 out of 3 tasks
+    1/3: running   [==================================================>]
+    2/3: preparing [=================================>                 ]
+    3/3: running   [==================================================>]
     ```

@@ -7,8 +7,8 @@
 * [src/lib/orionTypes/](#srcliboriontypes) (Common types)
 * [src/lib/rest/](#srclibrest) (REST interface, using external library microhttpd)
 * [src/lib/ngsi/](#srclibngsi) (Common NGSI types)
-* [src/lib/ngsi10/](#srclibngsi10) (Common NGSI10 types)
-* [src/lib/ngsi9/](#srclibngsi9) (Common NGSI9 types)
+* [src/lib/ngsi10/](#srclibngsi10) (Common NGSI10 types, NGSI10 = context management)
+* [src/lib/ngsi9/](#srclibngsi9) (Common NGSI9 types, NGSI9 = context management availability)
 * [src/lib/apiTypesV2/](#srclibapitypesv2) (NGSIv2 types)
 * [src/lib/parse/](#srclibparse) (Common functions and types for payload parsing)
 * [src/lib/jsonParse/](#srclibjsonparse) (Parsing of JSON payload for NGSIv1 requests, using external library Boost property_tree)
@@ -202,33 +202,31 @@ The **ngsi** library contains a collection of classes for the different payloads
 * `ContextAttributeVector`
 * `Metadata`
 * `MetadataVector`
-* `ContextElementVector`
 
 ### Methods and hierarchy
 
 These classes (as well as the classes in the libraries `ngsi9`, `ngsi10`, `convenience`) all have a standard set of methods:
 
-* `render()`, to render the object to a JSON string (mainly for NGSIv1)
-* `toJson()`, to render the object to a JSON string (for NGSIv2)
+* `toJson()`, to render the object to a JSON string (for NGSIv2). This method levarages `JsonObjectHelper` and `JsonVectorHelper`
+  in order to simplify the rendering process. This way you just add the elements you needs to print using `add*()` methods and don't
+  need to bother with starting/ending brackets, quotes and comma control.
+* `toJsonV1()`, to render the object to a JSON string (for NGSIv1)
 * `present()`, for debugging (the object is dumped as text to the log file)
 * `release()`, to release all allocated resources of the object
 * `check()`, to make sure the object follows the rules, i.e. about no forbidden characters, or mandatory fields missing, etc.
 
-The classes follow a hierarchy, e.g. `UpdateContextRequest` (top hierarchy class found in the ngsi10 library) contains a `ContextElementVector`. `ContextElementVector` is of course a vector of `ContextElement`.
-`ContextElement` in its turn contains:
+The classes follow a hierarchy, e.g. `UpdateContextRequest` (top hierarchy class found in the ngsi10 library) contains a
+`EntityVector`. `EntityVector` is of course a vector of `Entity`.
 
-* `EntityId`
-* `AttributeDomainName`
-* `ContextAttributeVector`
-* `MetadataVector` (this field `MetadataVector domainMetadataVector` is part of NGSIv1 but Orion doesn't make use of it)
+Note that both `EntityVector` and `Entity` classes doesn't belong to this library, but to [`src/lib/apiTypesV2`](#srclibapitypesv2).
+In general, given that NGSIv1 is now deprecated, we try to use NGSIv2 classes as much as possible, reducing the number
+of equivalente classes within `src/lib/ngsi`.
 
-The methods `render()`, `check()`, `release()`, etc. are called in a tree-like fashion, starting from the top hierarchy class, e.g. `UpdateContextRequest`:
+The methods `toJson()`, `check()`, `release()`, etc. are called in a tree-like fashion, starting from the top hierarchy class, e.g. `UpdateContextRequest`:
 
 * `UpdateContextRequest::check()` calls:
-  * `ContextElementVector::check()` calls (for each item in the vector):
-      * `ContextElement::check()` calls:
-          * `EntityId::check()`
-          * `AttributeDomainName::check()`
+  * `EntityVector::check()` calls (for each item in the vector):
+      * `Entity::check()` calls:
           * `ContextAttributeVector::check()` calls (for each item in the vector):
               * `ContextAttribute::check()` calls:
                   * `MetadataVector::check()` calls  (for each item in the vector):
@@ -335,9 +333,6 @@ Two service routines are especially important as many other service routines end
 * `postQueryContext()`
 
 Forwarding of queries/updates to context providers are implemented in these two service routines.  
-
-**IMPORTANT**: Also NGSIv2 requests depend on these two service routines, so even if NGSIv2 still has no forwarding mechanism of its own, these two routines 'gives' forwarding to NGSIv2. Note that the forwarded messages are translated into NGSIv1 requests.
-
 See full documentation on Context Providers and Forwarding in its [dedicated document](cprs.md).
 
 The function signature is common to all the service routines:

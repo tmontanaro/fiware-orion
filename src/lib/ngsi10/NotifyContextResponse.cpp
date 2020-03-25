@@ -60,16 +60,16 @@ NotifyContextResponse::NotifyContextResponse(StatusCode& sc)
 
 /* ****************************************************************************
 *
-* NotifyContextResponse::render -
+* NotifyContextResponse::toJsonV1 -
 */
-std::string NotifyContextResponse::render(void)
+std::string NotifyContextResponse::toJsonV1(void)
 {
   std::string out = "";
 
   responseCode.keyNameSet("responseCode");
 
   out += startTag();
-  out += responseCode.render(false);
+  out += responseCode.toJsonV1(false);
   out += endTag();
 
   return out;

@@ -125,7 +125,7 @@ Date: REGEX(.*)
 05. Ask for Metrics, see A1 and A2 as service paths, as well as two 'root service path'
 =======================================================================================
 HTTP/1.1 200 OK
-Content-Length: REGEX((842|850))
+Content-Length: REGEX(\d+)
 Content-Type: application/json
 Fiware-Correlator: REGEX([0-9a-f\-]{36})
 Date: REGEX(.*)
@@ -146,13 +146,13 @@ Date: REGEX(.*)
                 },
                 "root-subserv": {
                     "incomingTransactionResponseSize": REGEX(\d+),
-                    "incomingTransactions": REGEX((2|3)),
+                    "incomingTransactions": 2,
                     "serviceTime": REGEX(.*)
                 }
             },
             "sum": {
                 "incomingTransactionResponseSize": REGEX(\d+),
-                "incomingTransactions": REGEX((4|5)),
+                "incomingTransactions": 4,
                 "serviceTime": REGEX(.*)
             }
         }
@@ -171,13 +171,13 @@ Date: REGEX(.*)
             },
             "root-subserv": {
                 "incomingTransactionResponseSize": REGEX(\d+),
-                "incomingTransactions": REGEX((2|3)),
+                "incomingTransactions": 2,
                 "serviceTime": REGEX(.*)
             }
         },
         "sum": {
             "incomingTransactionResponseSize": REGEX(\d+),
-            "incomingTransactions": REGEX((4|5)),
+            "incomingTransactions": 4,
             "serviceTime": REGEX(.*)
         }
     }

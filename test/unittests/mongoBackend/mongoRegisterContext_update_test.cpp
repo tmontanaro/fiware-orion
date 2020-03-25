@@ -32,6 +32,7 @@
 
 #include "common/globals.h"
 #include "mongoBackend/MongoGlobal.h"
+#include "mongoBackend/mongoConnectionPool.h"
 #include "mongoBackend/mongoRegisterContext.h"
 #include "ngsi/ContextRegistration.h"
 #include "ngsi/EntityId.h"
@@ -107,21 +108,21 @@ static void prepareDatabase(void)
                      "entities" << BSON_ARRAY(
                        BSON("id" << "E1" << "type" << "T1")) <<
                      "attrs" << BSON_ARRAY(
-                       BSON("name" << "A1" << "type" << "TA1" << "isDomain" << "true") <<
-                       BSON("name" << "A2" << "type" << "TA2" << "isDomain" << "false") <<
-                       BSON("name" << "A3" << "type" << "TA3" << "isDomain" << "true")));
+                       BSON("name" << "A1" << "type" << "TA1") <<
+                       BSON("name" << "A2" << "type" << "TA2") <<
+                       BSON("name" << "A3" << "type" << "TA3")));
 
   BSONObj cr2 = BSON("providingApplication" << "http://cr1.com" <<
                      "entities" << BSON_ARRAY(
                        BSON("id" << "E1" << "type" << "T1")) <<
                      "attrs" << BSON_ARRAY(
-                       BSON("name" << "A1" << "type" << "TA1" << "isDomain" << "true")));
+                       BSON("name" << "A1" << "type" << "TA1")));
 
   BSONObj cr3 = BSON("providingApplication" << "http://cr2.com" <<
                      "entities" << BSON_ARRAY(
                        BSON("id" << "E1" << "type" << "T1")) <<
                      "attrs" << BSON_ARRAY(
-                       BSON("name" << "A1" << "type" << "TA1" << "isDomain" << "true")));
+                       BSON("name" << "A1" << "type" << "TA1")));
 
   BSONObjBuilder reg1;
 
@@ -174,7 +175,7 @@ TEST(mongoRegisterContext_update, updateCase1)
 
   /* Forge the request (from "inside" to "outside") */
   EntityId en("E1", "T1");
-  ContextRegistrationAttribute cra("A1", "TA1", "true");
+  ContextRegistrationAttribute cra("A1", "TA1");
   ContextRegistration cr;
   cr.entityIdVector.push_back(&en);
   cr.contextRegistrationAttributeVector.push_back(&cra);
@@ -223,7 +224,6 @@ TEST(mongoRegisterContext_update, updateCase1)
   attr0 = attrs[0].embeddedObject();
   EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
   EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-  EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
   /* reg #2 (untouched) */
   reg = connection->findOne(REGISTRATIONS_COLL, BSON("_id" << OID("51307b66f481db11bf860002")));
@@ -246,7 +246,6 @@ TEST(mongoRegisterContext_update, updateCase1)
   attr0 = attrs[0].embeddedObject();
   EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
   EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-  EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
   contextRegistration = contextRegistrationV[1].embeddedObject();
 
@@ -262,7 +261,6 @@ TEST(mongoRegisterContext_update, updateCase1)
   attr0 = attrs[0].embeddedObject();
   EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
   EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-  EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
   /* Check response is as expected */
   EXPECT_EQ(SccOk, ms);
@@ -289,7 +287,7 @@ TEST(mongoRegisterContext_update, updateCase2)
 
     /* Forge the request (from "inside" to "outside") */
     EntityId en("E1", "T1");
-    ContextRegistrationAttribute cra("A1", "TA1", "true");
+    ContextRegistrationAttribute cra("A1", "TA1");
     ContextRegistration cr;
     cr.entityIdVector.push_back(&en);
     cr.contextRegistrationAttributeVector.push_back(&cra);
@@ -339,13 +337,10 @@ TEST(mongoRegisterContext_update, updateCase2)
     attr2 = attrs[2].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
     EXPECT_STREQ("A2", C_STR_FIELD(attr1, "name"));
     EXPECT_STREQ("TA2", C_STR_FIELD(attr1, "type"));
-    EXPECT_STREQ("false", C_STR_FIELD(attr1, "isDomain"));
     EXPECT_STREQ("A3", C_STR_FIELD(attr2, "name"));
     EXPECT_STREQ("TA3", C_STR_FIELD(attr2, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr2, "isDomain"));
 
     /* reg #2 */
     reg = connection->findOne(REGISTRATIONS_COLL, BSON("_id" << OID("51307b66f481db11bf860002")));
@@ -368,7 +363,6 @@ TEST(mongoRegisterContext_update, updateCase2)
     attr0 = attrs[0].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
     /* Check response is as expected */
     EXPECT_EQ(SccOk, ms);
@@ -395,7 +389,7 @@ TEST(mongoRegisterContext_update, updateNotFound)
 
     /* Forge the request (from "inside" to "outside") */
     EntityId en("E1", "T1");
-    ContextRegistrationAttribute cra("A1", "TA1", "true");
+    ContextRegistrationAttribute cra("A1", "TA1");
     ContextRegistration cr;
     cr.entityIdVector.push_back(&en);
     cr.contextRegistrationAttributeVector.push_back(&cra);
@@ -445,13 +439,10 @@ TEST(mongoRegisterContext_update, updateNotFound)
     attr2 = attrs[2].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
     EXPECT_STREQ("A2", C_STR_FIELD(attr1, "name"));
     EXPECT_STREQ("TA2", C_STR_FIELD(attr1, "type"));
-    EXPECT_STREQ("false", C_STR_FIELD(attr1, "isDomain"));
     EXPECT_STREQ("A3", C_STR_FIELD(attr2, "name"));
     EXPECT_STREQ("TA3", C_STR_FIELD(attr2, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr2, "isDomain"));
 
     /* reg #2 (untouched) */
     reg = connection->findOne(REGISTRATIONS_COLL, BSON("_id" << OID("51307b66f481db11bf860002")));
@@ -474,7 +465,6 @@ TEST(mongoRegisterContext_update, updateNotFound)
     attr0 = attrs[0].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
     contextRegistration = contextRegistrationV[1].embeddedObject();
 
@@ -490,7 +480,6 @@ TEST(mongoRegisterContext_update, updateNotFound)
     attr0 = attrs[0].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
     /* Check response is as expected */
     EXPECT_EQ(SccOk, ms);
@@ -517,7 +506,7 @@ TEST(mongoRegisterContext_update, updateWrongIdString)
 
     /* Forge the request (from "inside" to "outside") */
     EntityId en("E1", "T1");
-    ContextRegistrationAttribute cra("A1", "TA1", "true");
+    ContextRegistrationAttribute cra("A1", "TA1");
     ContextRegistration cr;
     cr.entityIdVector.push_back(&en);
     cr.contextRegistrationAttributeVector.push_back(&cra);
@@ -567,13 +556,10 @@ TEST(mongoRegisterContext_update, updateWrongIdString)
     attr2 = attrs[2].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
     EXPECT_STREQ("A2", C_STR_FIELD(attr1, "name"));
     EXPECT_STREQ("TA2", C_STR_FIELD(attr1, "type"));
-    EXPECT_STREQ("false", C_STR_FIELD(attr1, "isDomain"));
     EXPECT_STREQ("A3", C_STR_FIELD(attr2, "name"));
     EXPECT_STREQ("TA3", C_STR_FIELD(attr2, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr2, "isDomain"));
 
     /* reg #2 (untouched) */
     reg = connection->findOne(REGISTRATIONS_COLL, BSON("_id" << OID("51307b66f481db11bf860002")));
@@ -596,7 +582,6 @@ TEST(mongoRegisterContext_update, updateWrongIdString)
     attr0 = attrs[0].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
     contextRegistration = contextRegistrationV[1].embeddedObject();
 
@@ -612,7 +597,6 @@ TEST(mongoRegisterContext_update, updateWrongIdString)
     attr0 = attrs[0].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
     /* Check response is as expected */
     EXPECT_EQ(SccOk, ms);
@@ -641,7 +625,7 @@ TEST(DISABLED_mongoRegisterContext_update, updateWrongIdNoHex)
 
     /* Forge the request (from "inside" to "outside") */
     EntityId en("E1", "T1");
-    ContextRegistrationAttribute cra("A1", "TA1", "true");
+    ContextRegistrationAttribute cra("A1", "TA1");
     ContextRegistration cr;
     cr.entityIdVector.push_back(&en);
     cr.contextRegistrationAttributeVector.push_back(&cra);
@@ -691,13 +675,10 @@ TEST(DISABLED_mongoRegisterContext_update, updateWrongIdNoHex)
     attr2 = attrs[2].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
     EXPECT_STREQ("A2", C_STR_FIELD(attr1, "name"));
     EXPECT_STREQ("TA2", C_STR_FIELD(attr1, "type"));
-    EXPECT_STREQ("false", C_STR_FIELD(attr1, "isDomain"));
     EXPECT_STREQ("A3", C_STR_FIELD(attr2, "name"));
     EXPECT_STREQ("TA3", C_STR_FIELD(attr2, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr2, "isDomain"));
 
     /* reg #2 (untouched) */
     reg = connection->findOne(REGISTRATIONS_COLL, BSON("_id" << OID("51307b66f481db11bf860002")));
@@ -720,7 +701,6 @@ TEST(DISABLED_mongoRegisterContext_update, updateWrongIdNoHex)
     attr0 = attrs[0].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
     contextRegistration = contextRegistrationV[1].embeddedObject();
 
@@ -736,7 +716,6 @@ TEST(DISABLED_mongoRegisterContext_update, updateWrongIdNoHex)
     attr0 = attrs[0].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
     /* Check response is as expected */
     EXPECT_EQ(SccOk, ms);
@@ -771,7 +750,7 @@ TEST(mongoRegisterContext_update, MongoDbFindOneFail)
 
     /* Forge the request (from "inside" to "outside") */
     EntityId en("E1", "T1");
-    ContextRegistrationAttribute cra("A1", "TA1", "true");
+    ContextRegistrationAttribute cra("A1", "TA1");
     ContextRegistration cr;
     cr.entityIdVector.push_back(&en);
     cr.contextRegistrationAttributeVector.push_back(&cra);
@@ -839,13 +818,10 @@ TEST(mongoRegisterContext_update, MongoDbFindOneFail)
     attr2 = attrs[2].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
     EXPECT_STREQ("A2", C_STR_FIELD(attr1, "name"));
     EXPECT_STREQ("TA2", C_STR_FIELD(attr1, "type"));
-    EXPECT_STREQ("false", C_STR_FIELD(attr1, "isDomain"));
     EXPECT_STREQ("A3", C_STR_FIELD(attr2, "name"));
     EXPECT_STREQ("TA3", C_STR_FIELD(attr2, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr2, "isDomain"));
 
     /* reg #2 (untouched) */
     reg = connectionDb->findOne(REGISTRATIONS_COLL, BSON("_id" << OID("51307b66f481db11bf860002")));
@@ -868,7 +844,6 @@ TEST(mongoRegisterContext_update, MongoDbFindOneFail)
     attr0 = attrs[0].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
     contextRegistration = contextRegistrationV[1].embeddedObject();
 
@@ -884,7 +859,6 @@ TEST(mongoRegisterContext_update, MongoDbFindOneFail)
     attr0 = attrs[0].embeddedObject();
     EXPECT_STREQ("A1", C_STR_FIELD(attr0, "name"));
     EXPECT_STREQ("TA1", C_STR_FIELD(attr0, "type"));
-    EXPECT_STREQ("true", C_STR_FIELD(attr0, "isDomain"));
 
     utExit();
 }
@@ -976,7 +950,7 @@ TEST(mongoRegisterContext_update, NotifyContextAvailability2)
   /* Prepare mock */
   NotifyContextAvailabilityRequest expectedNcar1, expectedNcar2;
   EntityId mockEn1("E5", "T5", "false");
-  ContextRegistrationAttribute mockCra("A1", "TA1", "false");
+  ContextRegistrationAttribute mockCra("A1", "TA1");
   ContextRegistrationResponse crr;
   crr.contextRegistration.entityIdVector.push_back(&mockEn1);
   crr.contextRegistration.contextRegistrationAttributeVector.push_back(&mockCra);
@@ -1005,7 +979,7 @@ TEST(mongoRegisterContext_update, NotifyContextAvailability2)
 
   /* Forge the request (from "inside" to "outside") */
   EntityId en("E5", "T5", "false");
-  ContextRegistrationAttribute cra("A1", "TA1", "false");
+  ContextRegistrationAttribute cra("A1", "TA1");
   ContextRegistration cr;
   cr.entityIdVector.push_back(&en);
   cr.contextRegistrationAttributeVector.push_back(&cra);
@@ -1052,7 +1026,7 @@ TEST(mongoRegisterContext_update, NotifyContextAvailability3)
   /* Prepare mock */
   NotifyContextAvailabilityRequest expectedNcar;
   EntityId mockEn1("E5", "T5", "false");
-  ContextRegistrationAttribute mockCra("A2", "TA2", "false");
+  ContextRegistrationAttribute mockCra("A2", "TA2");
   ContextRegistrationResponse crr;
   crr.contextRegistration.entityIdVector.push_back(&mockEn1);
   crr.contextRegistration.contextRegistrationAttributeVector.push_back(&mockCra);
@@ -1078,7 +1052,7 @@ TEST(mongoRegisterContext_update, NotifyContextAvailability3)
 
   /* Forge the request (from "inside" to "outside") */
   EntityId en("E5", "T5", "false");
-  ContextRegistrationAttribute cra("A2", "TA2", "false");
+  ContextRegistrationAttribute cra("A2", "TA2");
   ContextRegistration cr;
   cr.entityIdVector.push_back(&en);
   cr.contextRegistrationAttributeVector.push_back(&cra);

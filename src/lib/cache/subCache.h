@@ -108,9 +108,12 @@ struct CachedSubscription
   RenderFormat                renderFormat;
   SubscriptionExpression      expression;
   bool                        blacklist;
+  bool                        onlyChanged;
   ngsiv2::HttpInfo            httpInfo;
   int64_t                     lastFailure;  // timestamp of last notification failure
   int64_t                     lastSuccess;  // timestamp of last successful notification
+  std::string                 lastFailureReason;
+  int64_t                     lastSuccessCode;
   struct CachedSubscription*  next;
 };
 
@@ -197,6 +200,8 @@ extern void subCacheItemInsert
   int64_t                            lastNotificationTime,
   int64_t                            lastNotificationSuccessTime,
   int64_t                            lastNotificationFailureTime,
+  int64_t                            lastSuccessCode,
+  const std::string&                 lastFailureReason,
   StringFilter*                      stringFilterP,
   StringFilter*                      mdStringFilterP,
   const std::string&                 status,
@@ -204,7 +209,8 @@ extern void subCacheItemInsert
   const std::string&                 geometry,
   const std::string&                 coords,
   const std::string&                 georel,
-  bool                               blacklist
+  bool                               blacklist,
+  bool                               onlyChanged
 );
 
 
@@ -322,7 +328,9 @@ extern void subCacheItemNotificationErrorStatus
 (
   const std::string&  tenant,
   const std::string&  subscriptionId,
-  int                 errors
+  int                 errors,
+  long long           statusCode,
+  const std::string&  failureReason
 );
 
 #endif  // SRC_LIB_CACHE_SUBCACHE_H_
